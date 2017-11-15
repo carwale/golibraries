@@ -15,6 +15,8 @@ type ILogger interface{
 }
 
 type IMessage interface{
+	Tic() time.Time
+	Toc(time.Time)
 	Jsonify() string
 	Reset()
 }
@@ -23,6 +25,23 @@ type Message struct{
 	Requests, TotalLatency, MaxLatency, MinLatency int
 	Source string		// Origin for the message (Server Name)
 	Desc string			// Message description to be logged
+}
+
+func (msg *Message) Tic() time.Time{
+	msg.Requests ++
+	return time.Now()
+}
+
+func (msg *Message) Toc(start time.Time){
+	elapsed := time.Since(start)
+	latency := int(elapsed / 1000)
+	msg.TotalLatency += latency
+	if latency < msg.MinLatency {
+		msg.MinLatency = latency
+	}
+	if latency > msg.MaxLatency {
+		msg.MaxLatency = latency
+	}
 }
 
 func (msg *Message) Jsonify() string{
@@ -52,24 +71,15 @@ func (msg *Message) Reset(){
 
 type GoLogger struct{
 	Interval	int 		// In seconds
-	LogMessage 	*Message
+	LogMessage 	IMessage
 }
 
 func (gl *GoLogger) Tic() time.Time{
-	gl.LogMessage.Requests ++
-	return time.Now()
+	return gl.LogMessage.Tic()
 }
 
 func (gl *GoLogger) Toc(start time.Time){
-	elapsed := time.Since(start)
-	latency := int(elapsed / 1000)
-	gl.LogMessage.TotalLatency += latency
-	if latency < gl.LogMessage.MinLatency {
-		gl.LogMessage.MinLatency = latency
-	}
-	if latency > gl.LogMessage.MaxLatency {
-		gl.LogMessage.MaxLatency = latency
-	}
+	gl.LogMessage.Toc(start)
 }
 
 func (gl *GoLogger) Push(){
