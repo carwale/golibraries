@@ -37,14 +37,18 @@ func (mgl *MultiGoLogger) Tic(moduleName string) time.Time {
 	// Lock to add new module to messages map
 	mgl.mux.Lock()
 	defer mgl.mux.Unlock()
-	mgl.LogMessages[moduleName] = &Message{
-		Requests:     0,
-		TotalLatency: 0,
-		MaxLatency:   0,
-		MinLatency:   math.MaxInt32,
-		Module:       moduleName,
+	msg, ok = mgl.LogMessages[moduleName]
+	if !ok { // Double check
+		msg = &Message{
+			Requests:     0,
+			TotalLatency: 0,
+			MaxLatency:   0,
+			MinLatency:   math.MaxInt32,
+			Module:       moduleName,
+		}
+		mgl.LogMessages[moduleName] = msg
 	}
-	return mgl.LogMessages[moduleName].Tic()
+	return msg.Tic()
 }
 
 // Toc calculates the time elapsed since Tic() and stores in the Message
