@@ -26,6 +26,7 @@ type MultiGoLogger struct {
 	Logger       *log.Logger
 	once         sync.Once
 	mux          sync.Mutex // Mutex to lock before adding new message to LogMessages map
+	isRan        bool
 }
 
 // Tic starts the timer
@@ -53,9 +54,11 @@ func (mgl *MultiGoLogger) Tic(moduleName string) time.Time {
 
 // Toc calculates the time elapsed since Tic() and stores in the Message
 func (mgl *MultiGoLogger) Toc(moduleName string, start time.Time) {
-	msg, ok := mgl.LogMessages[moduleName]
-	if ok {
-		mgl.UpdateTunnel <- LatencyPacket{moduleName, msg.Toc(start)}
+	if mgl.isRan {
+		msg, ok := mgl.LogMessages[moduleName]
+		if ok {
+			mgl.UpdateTunnel <- LatencyPacket{moduleName, msg.Toc(start)}
+		}
 	}
 }
 
@@ -85,6 +88,7 @@ func (mgl *MultiGoLogger) Run() {
 				}
 			}
 		}()
+		mgl.isRan = true
 	})
 }
 
