@@ -141,12 +141,12 @@ func (l *CustomLogger) LogErrorInterface(v ...interface{}) {
 // LogError is used to send errors and a message along with the error
 func (l *CustomLogger) LogError(str string, err error) {
 	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q,"log_error": %q}`,
-		l.logLevel.String(), time.Now().String(), l.graylogFacility, str, err.Error())
+		ERROR.String(), time.Now().String(), l.graylogFacility, str, err.Error())
 }
 
 // LogErrorWithoutError is used to send only a message and not an error
 func (l *CustomLogger) LogErrorWithoutError(str string) {
-	l.logMessage(str)
+	l.logMessage(str, ERROR)
 
 }
 
@@ -155,44 +155,44 @@ func (l *CustomLogger) LogErrorMessage(str string, err error, pairs ...Pair) {
 	if err != nil {
 		pairs = append(pairs, Pair{"log_error", err.Error()})
 	}
-	l.logMessageWithExtras(str, pairs)
+	l.logMessageWithExtras(str, ERROR, pairs)
 }
 
 // LogWarning is used to send warning messages
 func (l *CustomLogger) LogWarning(str string) {
 	if l.logLevel >= WARN {
-		l.logMessage(str)
+		l.logMessage(str, WARN)
 	}
 }
 
 //LogInfoMessage is used to send extra fields to graylog
 func (l *CustomLogger) LogInfoMessage(str string, pairs ...Pair) {
 	if l.logLevel >= INFO {
-		l.logMessageWithExtras(str, pairs)
+		l.logMessageWithExtras(str, INFO, pairs)
 	}
 }
 
 // LogInfo is used to send info messages
 func (l *CustomLogger) LogInfo(str string) {
 	if l.logLevel >= INFO {
-		l.logMessage(str)
+		l.logMessage(str, INFO)
 	}
 }
 
 // LogDebug is used to send debug messages
 func (l *CustomLogger) LogDebug(str string) {
 	if l.logLevel >= DEBUG {
-		l.logMessage(str)
+		l.logMessage(str, DEBUG)
 	}
 }
 
-func (l *CustomLogger) logMessage(message string) {
+func (l *CustomLogger) logMessage(message string, level LogLevels) {
 	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q}`,
-		l.logLevel.String(), time.Now().String(), l.graylogFacility, message)
+		level.String(), time.Now().String(), l.graylogFacility, message)
 }
 
-func (l *CustomLogger) logMessageWithExtras(message string, pairs []Pair) {
-	pairs = append(pairs, Pair{"log_level", l.logLevel.String()})
+func (l *CustomLogger) logMessageWithExtras(message string, level LogLevels, pairs []Pair) {
+	pairs = append(pairs, Pair{"log_level", level.String()})
 	pairs = append(pairs, Pair{"log_timestamp", time.Now().String()})
 	pairs = append(pairs, Pair{"log_facility", l.graylogFacility})
 	pairs = append(pairs, Pair{"log_message", message})
