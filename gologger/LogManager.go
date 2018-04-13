@@ -12,7 +12,7 @@ import (
 	"gopkg.in/Graylog2/go-gelf.v2/gelf"
 )
 
-//CustomLogger is a graylog logger for golang
+// CustomLogger is a graylog logger for golang
 type CustomLogger struct {
 	graylogHostName       string
 	graylogPort           int
@@ -88,7 +88,7 @@ func TimeLoggingEnabled(flag bool) Option {
 
 // NewLogger : returns a new logger. When no options are given, it returns an error logger
 // With graylog logging as default to a port 11100 which is not in use. So it is prety much
-// useless. Please profide graylog host and port at the very least.
+// useless. Please provide graylog host and port at the very least.
 func NewLogger(LoggerOptions ...Option) *CustomLogger {
 
 	l := &CustomLogger{
@@ -202,10 +202,7 @@ func (l *CustomLogger) logMessageWithExtras(message string, pairs []Pair) {
 // Tic will take an input as a string message (It can be the name of the function)
 // And will return time and the message. For full used see the Toc funtion
 func (l *CustomLogger) Tic(s string) (string, time.Time) {
-	if l.isTimeLoggingEnabled {
-		return s, time.Now()
-	}
-	return "", time.Now()
+	return s, time.Now()
 }
 
 // Toc will log the time taken by the funtion. Its input is the output of the Tic function
