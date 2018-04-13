@@ -19,6 +19,7 @@ type GoLogger struct {
 	UpdateTunnel chan int // Channel which updates latency in message
 	Logger       *log.Logger
 	once         sync.Once
+	isRan        bool
 }
 
 // Tic starts the timer
@@ -28,7 +29,9 @@ func (gl *GoLogger) Tic() time.Time {
 
 // Toc calculates the time elapsed since Tic() and stores in the Message
 func (gl *GoLogger) Toc(start time.Time) {
-	gl.UpdateTunnel <- gl.LogMessage.Toc(start)
+	if gl.isRan {
+		gl.UpdateTunnel <- gl.LogMessage.Toc(start)
+	}
 }
 
 // Push : Method to push the message to respective output stream (Console)
@@ -55,6 +58,7 @@ func (gl *GoLogger) Run() {
 				}
 			}
 		}()
+		gl.isRan = true
 	})
 }
 
