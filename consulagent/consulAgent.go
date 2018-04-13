@@ -31,26 +31,42 @@ type Options func(c *ConsulAgent)
 
 //ConsulHost sets the IP for consul agent. Defults to 127.0.0.1
 func ConsulHost(hostName string) Options {
-	return func(c *ConsulAgent) { c.consulHostName = hostName }
+	return func(c *ConsulAgent) {
+		if hostName != "" {
+			c.consulHostName = hostName
+		}
+	}
 }
 
 // ConsulPort sets the port for consul agent. Defaults to 8500
 func ConsulPort(portNumber int) Options {
-	return func(c *ConsulAgent) { c.consulPortNumber = portNumber }
+	return func(c *ConsulAgent) {
+		if portNumber != 0 {
+			c.consulPortNumber = portNumber
+		}
+	}
 }
 
 //ConsulMonScriptName sets the name of the mon check script for the service
 //The script should be located in the mon folder of the application
 //Defaults to mon.py
 func ConsulMonScriptName(name string) Options {
-	return func(c *ConsulAgent) { c.consulMonScriptName = name }
+	return func(c *ConsulAgent) {
+		if name != "" {
+			c.consulMonScriptName = name
+		}
+	}
 }
 
 //ConsulServiceScriptName sets the name of the service check script
 //The script should be located in the mon folder of the application
 //Defaults to consultest.py
 func ConsulServiceScriptName(name string) Options {
-	return func(c *ConsulAgent) { c.consulServiceScriptName = name }
+	return func(c *ConsulAgent) {
+		if name != "" {
+			c.consulServiceScriptName = name
+		}
+	}
 }
 
 //Logger sets the logger for consul

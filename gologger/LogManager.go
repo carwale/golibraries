@@ -34,17 +34,29 @@ type Option func(l *CustomLogger)
 
 // GraylogHost sets the graylog host for the logger. Default is 127.0.0.1
 func GraylogHost(hostName string) Option {
-	return func(l *CustomLogger) { l.graylogHostName = hostName }
+	return func(l *CustomLogger) {
+		if hostName != "" {
+			l.graylogHostName = hostName
+		}
+	}
 }
 
 // GraylogPort sets the graylog port for the logger. Default is 11100
 func GraylogPort(portNumber int) Option {
-	return func(l *CustomLogger) { l.graylogPort = portNumber }
+	return func(l *CustomLogger) {
+		if portNumber != 0 {
+			l.graylogPort = portNumber
+		}
+	}
 }
 
 // GraylogFacility sets the graylog facility for the logger. Default is "ErrorLogger"
 func GraylogFacility(facility string) Option {
-	return func(l *CustomLogger) { l.graylogFacility = facility }
+	return func(l *CustomLogger) {
+		if facility != "" {
+			l.graylogFacility = facility
+		}
+	}
 }
 
 // DisableGraylog disables graylog logging. Defaults to false
