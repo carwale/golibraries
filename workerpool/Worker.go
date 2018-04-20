@@ -1,89 +1,126 @@
 package workerpool
 
-import(
-	"log"
+import (
+	"strconv"
+	"time"
+
+	"github.com/carwale/golibraries/gologger"
 )
 
-// Interface for the Job to be processed
-type IJob interface{
+// IJob : Interface for the Job to be processed
+type IJob interface {
 	Process() error
 }
 
-// Interface for Worker
-type IWorker interface{
+// IWorker : Interface for Worker
+type IWorker interface {
 	Start()
 	Stop()
 }
 
-// Default Worker implementation
+// Worker : Default Worker implementation
 type Worker struct {
-	WorkerPool   	chan chan IJob 	// A pool of workers channels that are registered in the dispatcher
-	JobChannel   	chan IJob		// Channel through which a job is received by the worker
-	Quit         	chan bool		// Channel for quit signal
-	WorkerNumber 	int 			// Worker Number
+	workerPool   chan chan IJob // A pool of workers channels that are registered in the dispatcher
+	jobChannel   chan IJob      // Channel through which a job is received by the worker
+	quit         chan bool      // Channel for quit signal
+	workerNumber int            // Worker Number
 }
 
-func (w *Worker) Start(){
+// Start : Start the worker and add to worker pool
+func (w *Worker) Start() {
 	go func() {
 		for {
-			w.WorkerPool <- w.JobChannel
+			w.workerPool <- w.jobChannel
 			select {
-				case job := <-w.JobChannel:	// Worker is waiting here to receive job from JobQueue
-					err := job.Process()	// Worker is Processing the job
-					if err != nil{
-						log.Printf("Some error occurred in processing: %s\n", err)
-					}
+			case job := <-w.jobChannel: // Worker is waiting here to receive job from JobQueue
+				job.Process() // Worker is Processing the job
 
-				case <-w.Quit:
-					// Signal to stop the worker
-					return
+			case <-w.quit:
+				// Signal to stop the worker
+				return
 			}
 		}
-	}()	
-}
-
-func (w *Worker) Stop(){
-	go func() {
-		w.Quit <- true
 	}()
 }
 
-func NewWorker(workerPool chan chan IJob, number int) IWorker {
-	return &Worker{
-		WorkerPool:   workerPool,
-		JobChannel:   make(chan IJob),
-		Quit:         make(chan bool),
-		WorkerNumber: number}
+// Stop : Calling this method stops the worker
+func (w *Worker) Stop() {
+	go func() {
+		w.quit <- true
+	}()
 }
 
+func newWorker(workerPool chan chan IJob, number int) IWorker {
+	return &Worker{
+		workerPool:   workerPool,
+		jobChannel:   make(chan IJob),
+		quit:         make(chan bool),
+		workerNumber: number,
+	}
+}
+
+// Option sets a parameter for the Dispatcher
+type Option func(d *Dispatcher)
+
+// SetMaxWorkers sets the number of workers. Default is 10
+func SetMaxWorkers(maxWorkers int) Option {
+	return func(d *Dispatcher) {
+		if maxWorkers > 0 {
+			d.maxWorkers = maxWorkers
+		}
+	}
+}
+
+// SetNewWorker sets the Worker initialisation function in dispatcher
+func SetNewWorker(newWorker func(chan chan IJob, int) IWorker) Option {
+	return func(d *Dispatcher) {
+		d.newWorker = newWorker
+	}
+}
+
+// SetLogger sets the logger in dispatcher
+func SetLogger(logger *gologger.CustomLogger) Option {
+	return func(d *Dispatcher) {
+		d.logger = logger
+	}
+}
+
+// Dispatcher holds worker pool, job queue and manages workers and job
+// To submit a job to worker pool, use code
+// `dispatcher.JobQueue <- job`
 type Dispatcher struct {
-	WorkerPool 	chan chan IJob 	// A pool of workers channels that are registered with the dispatcher
-	MaxWorkers 	int
-	NewWorker 	func(chan chan IJob, int) IWorker
-	JobQueue	chan IJob
+	workerPool     chan chan IJob // A pool of workers channels that are registered with the dispatcher
+	maxWorkers     int
+	newWorker      func(chan chan IJob, int) IWorker
+	JobQueue       chan IJob
+	workerTracker  chan int
+	maxUsedWorkers int
+	logger         *gologger.CustomLogger
 }
 
 func (d *Dispatcher) run() {
 	// starting n number of workers
-	for i := 0; i < d.MaxWorkers; i++ {
-		go func(j int){
-			worker := d.NewWorker(d.WorkerPool, j)	// Initialise a new worker
-			worker.Start()		// Start the worker
+	for i := 0; i < d.maxWorkers; i++ {
+		go func(j int) {
+			worker := d.newWorker(d.workerPool, j) // Initialise a new worker
+			worker.Start()                         // Start the worker
 		}(i)
 	}
-
-	go d.dispatch() 	// Start the dispatcher
+	d.trackWorkers() // Start tracking used workers
+	go d.dispatch()  // Start the dispatcher
 }
 
 func (d *Dispatcher) dispatch() {
 	for {
 		select {
-		case job := <- d.JobQueue:
+		case job := <-d.JobQueue:
 			// a job request has been received
 			go func(job IJob) {
 				// try to obtain a worker job channel that is available.
 				// this will block until a worker is idle
-				jobChannel := <-d.WorkerPool
+				jobChannel := <-d.workerPool
+				// track number of workers processing concurrently
+				d.workerTracker <- d.maxWorkers - len(d.workerPool)
 				// dispatch the job to the worker job channel
 				jobChannel <- job
 			}(job)
@@ -91,27 +128,53 @@ func (d *Dispatcher) dispatch() {
 	}
 }
 
-func newDispatcher(jobQueue chan IJob, newWorker func(chan chan IJob, int) IWorker, maxWorkers int) *Dispatcher {
-	pool := make(chan chan IJob, maxWorkers)
-	return &Dispatcher{
-		WorkerPool: pool,
-		MaxWorkers: maxWorkers,
-		NewWorker: newWorker,
-		JobQueue: jobQueue}
+func (d *Dispatcher) trackWorkers() {
+	ticker := time.NewTicker(time.Duration(60) * time.Second)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				// push to logger
+				d.logger.LogInfoMessage("max used workers", gologger.Pair{Key: "maxWorkers", Value: strconv.Itoa(d.maxUsedWorkers)})
+			case numWorkers := <-d.workerTracker:
+				// update used workers
+				if numWorkers > d.maxUsedWorkers {
+					d.maxUsedWorkers = numWorkers
+				}
+			}
+		}
+	}()
 }
 
-// Dispatcher using Default worker
-func InitializeDefaultDispatcher(maxWorkers int) *Dispatcher{
-	jobQueue := make(chan IJob)
-	dispatcher := newDispatcher(jobQueue, NewWorker, maxWorkers)
-	dispatcher.run()
-	return dispatcher
+// NewDispatcher : returns a new dispatcher. When no options are given, it returns a dispatcher with default settings
+// 10 Workers and `newWorker` initialisation and default logger which logs to graylog @ 127.0.0.1:11100.
+// This is not in use. So it is prety much useless.
+// Set log level to INFO to track max used workers.
+func NewDispatcher(options ...Option) *Dispatcher {
+	d := &Dispatcher{
+		maxWorkers: 10,
+		newWorker:  newWorker,
+		JobQueue:   make(chan IJob),
+		logger:     gologger.NewLogger(gologger.SetLogLevel("INFO")),
+	}
+
+	for _, option := range options {
+		option(d)
+	}
+
+	d.workerPool = make(chan chan IJob, d.maxWorkers)
+	d.run()
+	return d
 }
 
-// Dispatcher using custom implementation of the worker
-func InitializeDispatcher(newWorker func(chan chan IJob, int) IWorker, maxWorkers int) *Dispatcher{
-	jobQueue := make(chan IJob)
-	dispatcher := newDispatcher(jobQueue, newWorker, maxWorkers)
-	dispatcher.run()
-	return dispatcher
+// InitializeDefaultDispatcher : Dispatcher using Default worker
+// This method will be deprecated. Use NewDispatcher(options) instead
+func InitializeDefaultDispatcher(maxWorkers int) *Dispatcher {
+	return NewDispatcher(SetMaxWorkers(maxWorkers))
+}
+
+// InitializeDispatcher : Dispatcher using custom implementation of the worker
+// This method will be deprecated. Use NewDispatcher(options) instead
+func InitializeDispatcher(customWorker func(chan chan IJob, int) IWorker, maxWorkers int) *Dispatcher {
+	return NewDispatcher(SetMaxWorkers(maxWorkers), SetNewWorker(customWorker))
 }
