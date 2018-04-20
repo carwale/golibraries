@@ -137,6 +137,7 @@ func (d *Dispatcher) trackWorkers() {
 				// push to logger
 				if d.maxUsedWorkers > 0 {
 					d.logger.LogInfoMessage("max used workers", gologger.Pair{Key: "maxWorkers", Value: strconv.Itoa(d.maxUsedWorkers)})
+					d.maxUsedWorkers = 0
 				}
 			case numWorkers := <-d.workerTracker:
 				// update used workers
