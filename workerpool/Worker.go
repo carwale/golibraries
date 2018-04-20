@@ -154,10 +154,11 @@ func (d *Dispatcher) trackWorkers() {
 // Set log level to INFO to track max used workers.
 func NewDispatcher(options ...Option) *Dispatcher {
 	d := &Dispatcher{
-		maxWorkers: 10,
-		newWorker:  newWorker,
-		JobQueue:   make(chan IJob),
-		logger:     gologger.NewLogger(gologger.SetLogLevel("INFO")),
+		maxWorkers:    10,
+		newWorker:     newWorker,
+		JobQueue:      make(chan IJob),
+		workerTracker: make(chan int, 10),
+		logger:        gologger.NewLogger(gologger.SetLogLevel("INFO")),
 	}
 
 	for _, option := range options {
