@@ -2,6 +2,8 @@ package goutilities
 
 import (
 	"math/rand"
+	"net"
+	"os"
 	"time"
 )
 
@@ -54,4 +56,26 @@ func RemoveDuplicates(a []string) []string {
 		}
 	}
 	return result
+}
+
+// GetOutboundIP : returns preferred outbound ip of the current machine
+func GetOutboundIP() string {
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		return ""
+	}
+	defer conn.Close()
+
+	localAddr := conn.LocalAddr().(*net.UDPAddr)
+
+	return localAddr.IP.String()
+}
+
+// GetHostName : Returns host name of the current machine
+func GetHostName() string {
+	name, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return name
 }
