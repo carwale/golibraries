@@ -2,6 +2,7 @@ package consulagent
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -121,8 +122,8 @@ func (c *ConsulAgent) RegisterService(name, ipAddress, port string) (string, err
 	}
 	serviceID, err := c.registerServiceOnConsul(consulServiceName, ipAddress, hostName, gatewayPort)
 	if err != nil {
-		c.logger.LogError("Could not register gateway on consul.", err)
-		panic("could not register api gateway on consul")
+		c.logger.LogError(fmt.Sprintf("Could not register %s on consul", consulServiceName), err)
+		panic(fmt.Errorf("Could not register %s on consul", consulServiceName))
 	}
 	workingDir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
