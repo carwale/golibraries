@@ -20,22 +20,22 @@ type IWorker interface {
 
 // Worker : Default Worker implementation
 type Worker struct {
-	workerPool   chan chan IJob // A pool of workers channels that are registered in the dispatcher
-	jobChannel   chan IJob      // Channel through which a job is received by the worker
-	quit         chan bool      // Channel for quit signal
-	workerNumber int            // Worker Number
+	WorkerPool   chan chan IJob // A pool of workers channels that are registered in the dispatcher
+	JobChannel   chan IJob      // Channel through which a job is received by the worker
+	Quit         chan bool      // Channel for Quit signal
+	WorkerNumber int            // Worker Number
 }
 
 // Start : Start the worker and add to worker pool
 func (w *Worker) Start() {
 	go func() {
 		for {
-			w.workerPool <- w.jobChannel
+			w.WorkerPool <- w.JobChannel
 			select {
-			case job := <-w.jobChannel: // Worker is waiting here to receive job from JobQueue
+			case job := <-w.JobChannel: // Worker is waiting here to receive job from JobQueue
 				job.Process() // Worker is Processing the job
 
-			case <-w.quit:
+			case <-w.Quit:
 				// Signal to stop the worker
 				return
 			}
@@ -46,16 +46,16 @@ func (w *Worker) Start() {
 // Stop : Calling this method stops the worker
 func (w *Worker) Stop() {
 	go func() {
-		w.quit <- true
+		w.Quit <- true
 	}()
 }
 
 func newWorker(workerPool chan chan IJob, number int) IWorker {
 	return &Worker{
-		workerPool:   workerPool,
-		jobChannel:   make(chan IJob),
-		quit:         make(chan bool),
-		workerNumber: number,
+		WorkerPool:   workerPool,
+		JobChannel:   make(chan IJob),
+		Quit:         make(chan bool),
+		WorkerNumber: number,
 	}
 }
 
