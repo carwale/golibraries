@@ -11,7 +11,7 @@ import (
 	"github.com/apache/thrift/lib/go/thrift"
 	"github.com/carwale/golibraries/gologger"
 
-	"github.com/carwale/utils/UniversalConsumer/universalconsumer/channelprovider"
+	"github.com/carwale/golibraries/channelprovider"
 	"github.com/openzipkin/zipkin-go-opentracing"
 	"github.com/openzipkin/zipkin-go-opentracing/thrift/gen-go/zipkincore"
 	"github.com/streadway/amqp"
