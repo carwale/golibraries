@@ -7,8 +7,8 @@ import (
 
 	"github.com/carwale/golibraries/gologger"
 
-	"github.com/carwale/golibraries/connection"
-	"github.com/carwale/golibraries/connectionpool"
+	"github.com/carwale/golibraries/rabbitmq/connection"
+	"github.com/carwale/golibraries/rabbitmq/connectionpool"
 	"github.com/spf13/viper"
 	"github.com/streadway/amqp"
 )
