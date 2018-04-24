@@ -71,7 +71,8 @@ func NewConnectionPool(serverList *[]string, connectionProvider IConnectionProvi
 
 	return pool
 }
-
+// addNewConnection manages establishing new connection and adding it to pool, 
+// also listens for connection errors and retries connecting.
 func (pool *Pool) addNewConnection(server string) {
 	conn, err := pool.connectionProvider.NewConnection(server, uclogger)
 	if err != nil {
@@ -100,7 +101,7 @@ func (pool *Pool) addNewConnection(server string) {
 	}()
 }
 
-// GetConnection provides a rabbitmq connection from connection pool
+// GetConnection provides a rabbitmq connection from connection pool, times out in 1 minute if unable to get a connection
 func (pool *Pool) GetConnection() (*amqp.Connection, error) {
 	select {
 	case container := <-pool.getConnection:
