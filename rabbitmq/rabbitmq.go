@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"./channelprovider"
 	"github.com/carwale/golibraries/gologger"
+	"github.com/carwale/golibraries/rabbitmq/channelprovider"
 	"github.com/streadway/amqp"
 )
 
@@ -80,7 +80,7 @@ func NewRabbitMQManager(logger *gologger.CustomLogger, rabbitMqServers []string,
 }
 
 // NewRabbitmqChannel : initializes the rabbitmq channel.
-// Input parameters is a flag to notify error on channel
+// Input parameter is a flag to notify error on channel
 // NOTE: Add a listener to returned error channel to handle connection errors.
 func (om *OperationManager) NewRabbitmqChannel(notifyError bool) (*amqp.Channel, chan *amqp.Error) {
 	// Try to connect to the RabbitMQ server as
