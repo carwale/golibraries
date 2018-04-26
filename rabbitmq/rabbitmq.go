@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	exchangeSuffix = "-Exchange"
-	keySuffix      = "-Key"
-	dlQueueSuffix  = "-DL"
-	ttl            = 30000
+	exchangeSuffix       = "-Exchange"
+	keySuffix            = "-Key"
+	dlQueueSuffix        = "-DL"
+	ttl            int32 = 30000 // in milliseconds
 )
 
 // IProcessor : interface for consuming messages from queue
