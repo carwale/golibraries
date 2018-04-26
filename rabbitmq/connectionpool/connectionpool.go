@@ -55,7 +55,9 @@ func NewConnectionPool(serverList *[]string, connectionProvider IConnectionProvi
 			var nextConnection *Container
 			if len(pool.connections) > 0 {
 				sendConnection = pool.getConnection
-				nextConnection = pool.connections[(*serverList)[nextNodeIndex]]
+				for  ; nextConnection == nil ; nextNodeIndex = (nextNodeIndex + 1) % len(*serverList) {
+					nextConnection = pool.connections[(*serverList)[nextNodeIndex]]
+				}
 			}
 
 			select {
