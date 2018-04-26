@@ -32,7 +32,7 @@ type Container struct {
 
 var uclogger *gologger.CustomLogger
 
-// NewConnectionPool returns new connection pool
+// NewConnectionPool returns new connection pool, waits for 3 seconds before returning
 func NewConnectionPool(serverList *[]string, connectionProvider IConnectionProvider, logger *gologger.CustomLogger) *Pool {
 	pool := &Pool{
 		connections:        make(map[string]*Container),
@@ -55,7 +55,8 @@ func NewConnectionPool(serverList *[]string, connectionProvider IConnectionProvi
 			var nextConnection *Container
 			if len(pool.connections) > 0 {
 				sendConnection = pool.getConnection
-				for  ; nextConnection == nil ; nextNodeIndex = (nextNodeIndex + 1) % len(*serverList) {
+				for nextConnection == nil {
+					nextNodeIndex = (nextNodeIndex + 1) % len(*serverList)
 					nextConnection = pool.connections[(*serverList)[nextNodeIndex]]
 				}
 			}
@@ -66,14 +67,14 @@ func NewConnectionPool(serverList *[]string, connectionProvider IConnectionProvi
 			case container := <-pool.removeConnection:
 				delete(pool.connections, container.serverInfo)
 			case sendConnection <- nextConnection:
-				nextNodeIndex = (nextNodeIndex + 1) % len(*serverList)
 			}
 		}
 	}()
-
+	time.Sleep(3 * time.Second)
 	return pool
 }
-// addNewConnection manages establishing new connection and adding it to pool, 
+
+// addNewConnection manages establishing new connection and adding it to pool,
 // also listens for connection errors and retries connecting.
 func (pool *Pool) addNewConnection(server string) {
 	conn, err := pool.connectionProvider.NewConnection(server, uclogger)
