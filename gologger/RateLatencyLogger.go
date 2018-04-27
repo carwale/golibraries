@@ -109,7 +109,6 @@ func SetNewMessage(newMessage func(string) IMessage) RateLatencyOption {
 func SetMessages(modules []string) RateLatencyOption {
 	return func(rl *RateLatencyLogger) {
 		if rl.newMessage != nil {
-			rl.messages = map[string]IMessage{}
 			for _, m := range modules {
 				rl.messages[m] = rl.newMessage(m)
 			}
@@ -127,7 +126,7 @@ func SetLogger(logger *CustomLogger) RateLatencyOption {
 
 // NewRateLatencyLogger : returns a new RateLatencyLogger.
 // When no options are given, it returns a RateLatencyLogger with default settings.
-// By default it logs to stderr.
+// Default logger is default custom logger.
 // NOTE: Be sure to SetNewMessage before setting option SetMessages.
 func NewRateLatencyLogger(options ...RateLatencyOption) IMultiLogger {
 	rl := &RateLatencyLogger{
