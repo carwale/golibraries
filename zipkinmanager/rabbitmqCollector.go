@@ -142,7 +142,7 @@ func NewRabbitMQCollector(servers []string, options ...RabbitmqOption) (zipkintr
 	case <-timeout:
 		{
 			c.rabbitmqConnected = false
-			return nil, errors.New("Error getting channel for zipkin. Timeout")
+			return nil, errors.New("Error getting channel for zipkin. Timeout 5 secs")
 		}
 	}
 
