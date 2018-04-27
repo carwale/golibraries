@@ -118,7 +118,7 @@ func NewRabbitMQCollector(servers []string, options ...RabbitmqOption) (zipkintr
 		c.logger = gologger.NewLogger()
 	}
 	c.logger.LogDebug(servers[0])
-	timeout := time.After(2 * time.Second)
+	timeout := time.After(5 * time.Second)
 	flag := make(chan bool, 0)
 	go func() {
 		chPro := channelprovider.NewChannelProviderWithServers(c.logger, c.rabbitMQServers)
