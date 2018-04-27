@@ -18,56 +18,53 @@ type LatencyPacket struct {
 	Latency int
 }
 
-// MultiGoLogger : Logger that tracks multiple messages & prints to console
-type MultiGoLogger struct {
-	Interval     int                 // In seconds
-	LogMessages  map[string]IMessage // Map that holds all module's messages
-	UpdateTunnel chan LatencyPacket  // Channel which updates latency in message
-	Logger       *log.Logger
+// RateLatencyLogger : Logger that tracks multiple messages & prints to console
+type RateLatencyLogger struct {
+	interval     int                 // In seconds
+	messages     map[string]IMessage // Map that holds all module's messages
+	updateTunnel chan LatencyPacket  // Channel which updates latency in message
+	logger       *log.Logger
+	newMessage   func(string) IMessage
 	once         sync.Once
-	mux          sync.Mutex // Mutex to lock before adding new message to LogMessages map
+	mux          sync.RWMutex // Mutex to lock before adding new message to messages map
 	isRan        bool
 }
 
 // Tic starts the timer
-func (mgl *MultiGoLogger) Tic(moduleName string) time.Time {
-	msg, ok := mgl.LogMessages[moduleName]
+func (mgl *RateLatencyLogger) Tic(moduleName string) time.Time {
+	mgl.mux.RLock()
+	msg, ok := mgl.messages[moduleName]
+	mgl.mux.RUnlock()
 	if ok {
 		return msg.Tic()
 	}
 	// Lock to add new module to messages map
 	mgl.mux.Lock()
 	defer mgl.mux.Unlock()
-	msg, ok = mgl.LogMessages[moduleName]
+	msg, ok = mgl.messages[moduleName]
 	if !ok { // Double check
-		msg = &Message{
-			Requests:     0,
-			TotalLatency: 0,
-			MaxLatency:   0,
-			MinLatency:   math.MaxInt32,
-			Module:       moduleName,
-		}
-		mgl.LogMessages[moduleName] = msg
+		msg = mgl.newMessage(moduleName)
+		mgl.messages[moduleName] = msg
 	}
 	return msg.Tic()
 }
 
 // Toc calculates the time elapsed since Tic() and stores in the Message
-func (mgl *MultiGoLogger) Toc(moduleName string, start time.Time) {
+func (mgl *RateLatencyLogger) Toc(moduleName string, start time.Time) {
 	if mgl.isRan {
-		msg, ok := mgl.LogMessages[moduleName]
+		msg, ok := mgl.messages[moduleName]
 		if ok {
-			mgl.UpdateTunnel <- LatencyPacket{moduleName, msg.Toc(start)}
+			mgl.updateTunnel <- LatencyPacket{moduleName, msg.Toc(start)}
 		}
 	}
 }
 
 // Push : Method to push the message to respective output stream (Console)
-func (mgl *MultiGoLogger) Push() {
-	for _, m := range mgl.LogMessages {
+func (mgl *RateLatencyLogger) Push() {
+	for _, m := range mgl.messages {
 		msg := m.Jsonify()
 		if msg != "" {
-			go mgl.Logger.Println(msg)
+			go mgl.logger.Println(msg)
 		}
 		m.Reset()
 	}
@@ -75,16 +72,16 @@ func (mgl *MultiGoLogger) Push() {
 
 // Run : Starts the logger in a go routine
 // Calling this multiple times doesn't have any effect
-func (mgl *MultiGoLogger) Run() {
+func (mgl *RateLatencyLogger) Run() {
 	mgl.once.Do(func() {
-		ticker := time.NewTicker(time.Duration(mgl.Interval) * time.Second)
+		ticker := time.NewTicker(time.Duration(mgl.interval) * time.Second)
 		go func() {
 			for {
 				select {
 				case <-ticker.C:
 					mgl.Push()
-				case packet := <-mgl.UpdateTunnel:
-					mgl.LogMessages[packet.Module].Update(packet.Latency)
+				case packet := <-mgl.updateTunnel:
+					mgl.messages[packet.Module].Update(packet.Latency)
 				}
 			}
 		}()
@@ -92,21 +89,21 @@ func (mgl *MultiGoLogger) Run() {
 	})
 }
 
-// InitialiseMultiGoLogger with given input parameters
+// InitialiseRateLatencyLogger with given input parameters
 // msg : Messages map containing IMessages
 // interval : frequency to push message to IOWriter
 // updateTunnel : Channel which listens to incoming latency updates
 // ioWriter : io.Writer stream to write the message
-func InitialiseMultiGoLogger(msgs map[string]IMessage, interval int, updateTunnel chan LatencyPacket, ioWriter io.Writer) IMultiLogger {
-	return &MultiGoLogger{
-		Interval:     interval,
-		LogMessages:  msgs,
-		UpdateTunnel: updateTunnel,
-		Logger:       log.New(ioWriter, "", 0),
+func InitialiseRateLatencyLogger(msgs map[string]IMessage, interval int, updateTunnel chan LatencyPacket, ioWriter io.Writer) IMultiLogger {
+	return &RateLatencyLogger{
+		interval:     interval,
+		messages:     msgs,
+		updateTunnel: updateTunnel,
+		logger:       log.New(ioWriter, "", 0),
 	}
 }
 
-// NewMultiGoLogger initialises the MultiGoLogger
+// NewMultiGoLogger initialises the RateLatencyLogger
 func NewMultiGoLogger(interval int, modules []string) IMultiLogger {
 	logMessages := map[string]IMessage{}
 	for _, m := range modules {
@@ -118,7 +115,7 @@ func NewMultiGoLogger(interval int, modules []string) IMultiLogger {
 			Module:       m,
 		}
 	}
-	return InitialiseMultiGoLogger(logMessages, interval, make(chan LatencyPacket, 100), os.Stderr)
+	return InitialiseRateLatencyLogger(logMessages, interval, make(chan LatencyPacket, 100), os.Stderr)
 }
 
 // NewMultiGrayLogger initialises the MultiGrayLogger
@@ -138,5 +135,5 @@ func NewMultiGrayLogger(host string, port int, interval int, modules []string) I
 			Module:       m,
 		}
 	}
-	return InitialiseMultiGoLogger(logMessages, interval, make(chan LatencyPacket, 100), gelfWriter)
+	return InitialiseRateLatencyLogger(logMessages, interval, make(chan LatencyPacket, 100), gelfWriter)
 }
