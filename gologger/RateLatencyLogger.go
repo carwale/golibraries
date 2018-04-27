@@ -8,7 +8,7 @@ import (
 // updatePacket : Struct that holds message updates
 type updatePacket struct {
 	key   string
-	value int
+	value int64
 }
 
 // RateLatencyLogger : Logger that tracks multiple messages & prints to console
@@ -19,38 +19,19 @@ type RateLatencyLogger struct {
 	logger       *CustomLogger
 	newMessage   func(string) IMessage
 	once         sync.Once
-	mux          sync.RWMutex // Mutex to lock before adding new message to messages map
 	isRan        bool
 }
 
 // Tic starts the timer
 func (mgl *RateLatencyLogger) Tic(moduleName string) time.Time {
-	mgl.mux.RLock()
-	msg, ok := mgl.messages[moduleName]
-	mgl.mux.RUnlock()
-	if ok {
-		return msg.Tic()
-	}
-	// Lock to add new module to messages map
-	mgl.mux.Lock()
-	defer mgl.mux.Unlock()
-	msg, ok = mgl.messages[moduleName]
-	if !ok { // Double check
-		msg = mgl.newMessage(moduleName)
-		mgl.messages[moduleName] = msg
-	}
-	return msg.Tic()
+	return time.Now()
 }
 
 // Toc calculates the time elapsed since Tic() and stores in the Message
 func (mgl *RateLatencyLogger) Toc(moduleName string, start time.Time) {
 	if mgl.isRan {
-		mgl.mux.RLock()
-		msg, ok := mgl.messages[moduleName]
-		mgl.mux.RUnlock()
-		if ok {
-			mgl.updateTunnel <- updatePacket{moduleName, msg.Toc(start)}
-		}
+		elapsed := int64(time.Since(start) / 1000)
+		mgl.updateTunnel <- updatePacket{moduleName, elapsed}
 	}
 }
 
@@ -76,7 +57,12 @@ func (mgl *RateLatencyLogger) Run() {
 				case <-ticker.C:
 					mgl.Push()
 				case packet := <-mgl.updateTunnel:
-					mgl.messages[packet.key].Update(packet.value)
+					msg, ok := mgl.messages[packet.key]
+					if !ok {
+						msg = mgl.newMessage(packet.key)
+						mgl.messages[packet.key] = msg
+					}
+					msg.Update(packet.value)
 				}
 			}
 		}()

@@ -18,11 +18,7 @@ type IMultiLogger interface {
 
 // IMessage : Interface to implement for Message type
 type IMessage interface {
-	// To measure time elapsed between any two points in the code,
-	// Start the time logger by Tic() and end the time logger by calling Toc(time)
-	Tic() time.Time
-	Toc(time.Time) int
-	Update(int)
+	Update(int64)
 	// Method to Jsonify the message struct
 	Jsonify() string
 	// Method to Reset the message struct
