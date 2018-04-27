@@ -60,3 +60,14 @@ func (msg *Message) Reset() {
 	msg.MaxLatency = 0
 	msg.MinLatency = math.MaxInt32
 }
+
+// NewMessage returns default message instance
+func NewMessage(module string) IMessage {
+	return &Message{
+		Requests:     0,
+		TotalLatency: 0,
+		MaxLatency:   0,
+		MinLatency:   math.MaxInt32,
+		Module:       module,
+	}
+}

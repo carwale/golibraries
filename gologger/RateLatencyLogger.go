@@ -1,29 +1,22 @@
 package gologger
 
 import (
-	"io"
-	"log"
-	"math"
-	"os"
-	"strconv"
 	"sync"
 	"time"
-
-	"gopkg.in/Graylog2/go-gelf.v2/gelf"
 )
 
-// LatencyPacket : Struct that holds latency details
-type LatencyPacket struct {
-	Module  string
-	Latency int
+// updatePacket : Struct that holds message updates
+type updatePacket struct {
+	key   string
+	value int
 }
 
 // RateLatencyLogger : Logger that tracks multiple messages & prints to console
 type RateLatencyLogger struct {
 	interval     int                 // In seconds
 	messages     map[string]IMessage // Map that holds all module's messages
-	updateTunnel chan LatencyPacket  // Channel which updates latency in message
-	logger       *log.Logger
+	updateTunnel chan updatePacket   // Channel which updates latency in message
+	logger       *CustomLogger
 	newMessage   func(string) IMessage
 	once         sync.Once
 	mux          sync.RWMutex // Mutex to lock before adding new message to messages map
@@ -52,9 +45,11 @@ func (mgl *RateLatencyLogger) Tic(moduleName string) time.Time {
 // Toc calculates the time elapsed since Tic() and stores in the Message
 func (mgl *RateLatencyLogger) Toc(moduleName string, start time.Time) {
 	if mgl.isRan {
+		mgl.mux.RLock()
 		msg, ok := mgl.messages[moduleName]
+		mgl.mux.RUnlock()
 		if ok {
-			mgl.updateTunnel <- LatencyPacket{moduleName, msg.Toc(start)}
+			mgl.updateTunnel <- updatePacket{moduleName, msg.Toc(start)}
 		}
 	}
 }
@@ -64,13 +59,13 @@ func (mgl *RateLatencyLogger) Push() {
 	for _, m := range mgl.messages {
 		msg := m.Jsonify()
 		if msg != "" {
-			go mgl.logger.Println(msg)
+			go mgl.logger.LogMessage(msg)
 		}
 		m.Reset()
 	}
 }
 
-// Run : Starts the logger in a go routine
+// Run : Starts the logger in a go routine.
 // Calling this multiple times doesn't have any effect
 func (mgl *RateLatencyLogger) Run() {
 	mgl.once.Do(func() {
@@ -81,7 +76,7 @@ func (mgl *RateLatencyLogger) Run() {
 				case <-ticker.C:
 					mgl.Push()
 				case packet := <-mgl.updateTunnel:
-					mgl.messages[packet.Module].Update(packet.Latency)
+					mgl.messages[packet.key].Update(packet.value)
 				}
 			}
 		}()
@@ -89,51 +84,90 @@ func (mgl *RateLatencyLogger) Run() {
 	})
 }
 
-// InitialiseRateLatencyLogger with given input parameters
-// msg : Messages map containing IMessages
-// interval : frequency to push message to IOWriter
-// updateTunnel : Channel which listens to incoming latency updates
-// ioWriter : io.Writer stream to write the message
-func InitialiseRateLatencyLogger(msgs map[string]IMessage, interval int, updateTunnel chan LatencyPacket, ioWriter io.Writer) IMultiLogger {
-	return &RateLatencyLogger{
-		interval:     interval,
-		messages:     msgs,
-		updateTunnel: updateTunnel,
-		logger:       log.New(ioWriter, "", 0),
+// RateLatencyOption sets a parameter for the RateLatencyLogger
+type RateLatencyOption func(rl *RateLatencyLogger)
+
+// SetInterval sets the time interval to push the message.
+// interval in seconds.
+// Default is 60 seconds.
+func SetInterval(interval int) RateLatencyOption {
+	return func(rl *RateLatencyLogger) {
+		if interval > 0 {
+			rl.interval = interval
+		}
 	}
 }
 
-// NewMultiGoLogger initialises the RateLatencyLogger
+// SetNewMessage sets New message initialisation function
+func SetNewMessage(newMessage func(string) IMessage) RateLatencyOption {
+	return func(rl *RateLatencyLogger) {
+		rl.newMessage = newMessage
+	}
+}
+
+// SetMessages sets messages map
+func SetMessages(modules []string) RateLatencyOption {
+	return func(rl *RateLatencyLogger) {
+		if rl.newMessage != nil {
+			rl.messages = map[string]IMessage{}
+			for _, m := range modules {
+				rl.messages[m] = rl.newMessage(m)
+			}
+		}
+	}
+}
+
+// SetLogger sets the output logger.
+// Default is stderr
+func SetLogger(logger *CustomLogger) RateLatencyOption {
+	return func(rl *RateLatencyLogger) {
+		rl.logger = logger
+	}
+}
+
+// NewRateLatencyLogger : returns a new RateLatencyLogger.
+// When no options are given, it returns a RateLatencyLogger with default settings.
+// By default it logs to stderr.
+// NOTE: Be sure to SetNewMessage before setting option SetMessages.
+func NewRateLatencyLogger(options ...RateLatencyOption) IMultiLogger {
+	rl := &RateLatencyLogger{
+		interval:     60,
+		messages:     map[string]IMessage{},
+		updateTunnel: make(chan updatePacket, 100),
+		logger:       NewLogger(),
+		newMessage:   NewMessage,
+	}
+
+	for _, option := range options {
+		option(rl)
+	}
+
+	return rl
+}
+
+// NewMultiGoLogger initialises the RateLatencyLogger.
+// This will be removed in next revision. Use NewRateLatencyLogger instead.
 func NewMultiGoLogger(interval int, modules []string) IMultiLogger {
-	logMessages := map[string]IMessage{}
-	for _, m := range modules {
-		logMessages[m] = &Message{
-			Requests:     0,
-			TotalLatency: 0,
-			MaxLatency:   0,
-			MinLatency:   math.MaxInt32,
-			Module:       m,
-		}
-	}
-	return InitialiseRateLatencyLogger(logMessages, interval, make(chan LatencyPacket, 100), os.Stderr)
+	return NewRateLatencyLogger(
+		SetInterval(interval),
+		SetMessages(modules),
+		SetLogger(NewLogger(
+			ConsolePrintEnabled(true),
+			DisableGraylog(true),
+		)),
+	)
 }
 
-// NewMultiGrayLogger initialises the MultiGrayLogger
+// NewMultiGrayLogger initialises the MultiGrayLogger.
+// This will be removed in next revision. Use NewRateLatencyLogger instead.
 func NewMultiGrayLogger(host string, port int, interval int, modules []string) IMultiLogger {
-	graylogAddr := host + ":" + strconv.Itoa(port)
-	gelfWriter, err := gelf.NewUDPWriter(graylogAddr)
-	if err != nil {
-		log.Fatalf("Cannot get gelf.NewWriter: %s", err)
-	}
-	logMessages := map[string]IMessage{}
-	for _, m := range modules {
-		logMessages[m] = &Message{
-			Requests:     0,
-			TotalLatency: 0,
-			MaxLatency:   0,
-			MinLatency:   math.MaxInt32,
-			Module:       m,
-		}
-	}
-	return InitialiseRateLatencyLogger(logMessages, interval, make(chan LatencyPacket, 100), gelfWriter)
+	return NewRateLatencyLogger(
+		SetInterval(interval),
+		SetMessages(modules),
+		SetLogger(NewLogger(
+			GraylogHost(host),
+			GraylogPort(port),
+			ConsolePrintEnabled(false),
+		)),
+	)
 }
