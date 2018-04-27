@@ -3,31 +3,19 @@ package gologger
 import (
 	"fmt"
 	"math"
-	"time"
 )
 
 // Message : Default message type implementing IMessage
 type Message struct {
-	Requests     int
-	TotalLatency int
-	MaxLatency   int
-	MinLatency   int
+	Requests     int64
+	TotalLatency int64
+	MaxLatency   int64
+	MinLatency   int64
 	Module       string // Module name
 }
 
-// Tic starts the timer
-func (msg *Message) Tic() time.Time {
-	return time.Now()
-}
-
-// Toc calculates the time elapsed since Tic() and stores in the Message
-func (msg *Message) Toc(start time.Time) int {
-	elapsed := time.Since(start)
-	return int(elapsed / 1000)
-}
-
 // Update the message with calculated latency
-func (msg *Message) Update(elapsed int) {
+func (msg *Message) Update(elapsed int64) {
 	msg.Requests++
 	latency := elapsed
 	msg.TotalLatency += latency
@@ -44,8 +32,7 @@ func (msg *Message) Jsonify() string {
 	if msg.Requests <= 0 {
 		return ""
 	}
-	meanLatency := 0
-	meanLatency = msg.TotalLatency / msg.Requests
+	meanLatency := msg.TotalLatency / msg.Requests
 	minLatency := msg.MinLatency
 	if minLatency == math.MaxInt32 {
 		minLatency = 0
@@ -59,4 +46,15 @@ func (msg *Message) Reset() {
 	msg.TotalLatency = 0
 	msg.MaxLatency = 0
 	msg.MinLatency = math.MaxInt32
+}
+
+// NewMessage returns default message instance
+func NewMessage(module string) IMessage {
+	return &Message{
+		Requests:     0,
+		TotalLatency: 0,
+		MaxLatency:   0,
+		MinLatency:   math.MaxInt32,
+		Module:       module,
+	}
 }

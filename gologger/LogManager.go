@@ -186,6 +186,11 @@ func (l *CustomLogger) LogDebug(str string) {
 	}
 }
 
+// LogMessage is used to log plain message
+func (l *CustomLogger) LogMessage(message string) {
+	l.logger.Printf(message)
+}
+
 func (l *CustomLogger) logMessage(message string, level LogLevels) {
 	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q}`,
 		level.String(), time.Now().String(), l.graylogFacility, message)
