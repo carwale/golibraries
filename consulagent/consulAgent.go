@@ -13,6 +13,18 @@ import (
 	"github.com/hashicorp/consul/api"
 )
 
+//IServiceDiscoveryAgent is the interface that every service discovery agent
+//should implement
+type IServiceDiscoveryAgent interface {
+	//RegisterService will register the service given the name, ip and port
+	//It returns the ID of the service
+	RegisterService(name, ipAddress, port string) (string, error)
+	//DeregisterService will deregister the service given the ID
+	DeregisterService(serviceID string)
+	//GetHealthyService will give a list of all the instances of the module
+	GetHealthyService(moduleName string) ([]string, error)
+}
+
 // ConsulAgent is the custom consul agent that will be used by all go lang applications
 type ConsulAgent struct {
 	consulHostName          string
@@ -77,7 +89,7 @@ func Logger(customLogger *gologger.CustomLogger) Options {
 }
 
 //NewConsulAgent will initialize consul client.
-func NewConsulAgent(options ...Options) *ConsulAgent {
+func NewConsulAgent(options ...Options) IServiceDiscoveryAgent {
 
 	once.Do(func() {
 		c := &ConsulAgent{
