@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 
 	"github.com/carwale/golibraries/gologger"
 	"github.com/carwale/golibraries/goutilities"
@@ -34,10 +33,6 @@ type ConsulAgent struct {
 	consulAgent             *api.Client
 	logger                  *gologger.CustomLogger
 }
-
-var agent *ConsulAgent
-
-var once sync.Once
 
 // Options sets a parameter for consul agent
 type Options func(c *ConsulAgent)
@@ -91,30 +86,27 @@ func Logger(customLogger *gologger.CustomLogger) Options {
 //NewConsulAgent will initialize consul client.
 func NewConsulAgent(options ...Options) IServiceDiscoveryAgent {
 
-	once.Do(func() {
-		c := &ConsulAgent{
-			consulHostName:          "127.0.0.1",
-			consulPortNumber:        8500,
-			consulMonScriptName:     "mon.py",
-			consulServiceScriptName: "consultest.py",
-			logger:                  gologger.NewLogger(),
-		}
+	c := &ConsulAgent{
+		consulHostName:          "127.0.0.1",
+		consulPortNumber:        8500,
+		consulMonScriptName:     "mon.py",
+		consulServiceScriptName: "consultest.py",
+		logger:                  gologger.NewLogger(),
+	}
 
-		for _, option := range options {
-			option(c)
-		}
+	for _, option := range options {
+		option(c)
+	}
 
-		client, err := api.NewClient(&api.Config{
-			Address: c.consulHostName + ":" + strconv.Itoa(c.consulPortNumber),
-		})
-		if err != nil {
-			c.logger.LogError("could not connect to consul!!", err)
-			panic("could not connect to consul")
-		}
-		c.consulAgent = client
-		agent = c
+	client, err := api.NewClient(&api.Config{
+		Address: c.consulHostName + ":" + strconv.Itoa(c.consulPortNumber),
 	})
-	return agent
+	if err != nil {
+		c.logger.LogError("could not connect to consul!!", err)
+		panic("could not connect to consul")
+	}
+	c.consulAgent = client
+	return c
 }
 
 //RegisterService will register the service on consul
