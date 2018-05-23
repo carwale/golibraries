@@ -170,7 +170,7 @@ func (c *ConsulAgent) registerCheck(serviceID, checkID, checkName, scriptLocatio
 		Name:      checkName,
 		ServiceID: serviceID,
 		AgentServiceCheck: api.AgentServiceCheck{
-			Args:     []string{scriptLocation},
+			Script:   scriptLocation,
 			Interval: "10s",
 			Timeout:  "5s",
 		},
