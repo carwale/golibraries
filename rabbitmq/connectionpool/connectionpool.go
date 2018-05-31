@@ -70,7 +70,7 @@ func NewConnectionPool(serverList *[]string, connectionProvider IConnectionProvi
 			}
 		}
 	}()
-	time.Sleep(3 * time.Second)
+	
 	return pool
 }
 
