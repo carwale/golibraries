@@ -147,7 +147,11 @@ func (l *CustomLogger) LogError(str string, err error) {
 // LogErrorWithoutError is used to send only a message and not an error
 func (l *CustomLogger) LogErrorWithoutError(str string) {
 	l.logMessage(str, ERROR)
+}
 
+// LogErrorWithoutErrorf is used to send only a message and not an error
+func (l *CustomLogger) LogErrorWithoutErrorf(str string, args ...interface{}) {
+	l.LogErrorWithoutError(fmt.Sprintf(str, args...))
 }
 
 //LogErrorMessage is used to send extra fields to graylog along with the error
@@ -165,6 +169,11 @@ func (l *CustomLogger) LogWarning(str string) {
 	}
 }
 
+// LogWarningf is used to send warning messages
+func (l *CustomLogger) LogWarningf(str string, args ...interface{}) {
+	l.LogWarning(fmt.Sprintf(str, args...))
+}
+
 //LogInfoMessage is used to send extra fields to graylog
 func (l *CustomLogger) LogInfoMessage(str string, pairs ...Pair) {
 	if l.logLevel >= INFO {
@@ -179,6 +188,11 @@ func (l *CustomLogger) LogInfo(str string) {
 	}
 }
 
+// LogInfof is used to send formatted info messages
+func (l *CustomLogger) LogInfof(str string, args ...interface{}) {
+	l.LogInfo(fmt.Sprintf(str, args...))
+}
+
 // LogDebug is used to send debug messages
 func (l *CustomLogger) LogDebug(str string) {
 	if l.logLevel >= DEBUG {
@@ -186,9 +200,19 @@ func (l *CustomLogger) LogDebug(str string) {
 	}
 }
 
+// LogDebugf is used to send debug messages
+func (l *CustomLogger) LogDebugf(str string, args ...interface{}) {
+	l.LogDebug(fmt.Sprintf(str, args...))
+}
+
 // LogMessage is used to log plain message
 func (l *CustomLogger) LogMessage(message string) {
 	l.logger.Printf(message)
+}
+
+// LogMessagef is used to log plain message
+func (l *CustomLogger) LogMessagef(message string, args ...interface{}) {
+	l.LogMessage(fmt.Sprintf(message, args...))
 }
 
 func (l *CustomLogger) logMessage(message string, level LogLevels) {
