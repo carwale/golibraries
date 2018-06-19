@@ -174,6 +174,13 @@ func (l *CustomLogger) LogWarningf(str string, args ...interface{}) {
 	l.LogWarning(fmt.Sprintf(str, args...))
 }
 
+// LogWarningMessage is used to send warning messages along with extra fields to GrayLog
+func (l *CustomLogger) LogWarningMessage(str string, pairs ...Pair) {
+	if l.logLevel >= WARN {
+		l.logMessageWithExtras(str, WARN, pairs)
+	}
+}
+
 //LogInfoMessage is used to send extra fields to graylog
 func (l *CustomLogger) LogInfoMessage(str string, pairs ...Pair) {
 	if l.logLevel >= INFO {
