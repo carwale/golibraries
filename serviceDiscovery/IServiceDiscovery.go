@@ -1,4 +1,4 @@
-package serviceDiscovery
+package servicediscovery
 
 //IServiceDiscoveryAgent is the interface that every service discovery agent
 //should implement

@@ -1,4 +1,4 @@
-package serviceDiscovery
+package servicediscovery
 
 import (
 	"errors"
