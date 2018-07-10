@@ -23,4 +23,6 @@ type IMessage interface {
 	Jsonify() string
 	// Method to Reset the message struct
 	Reset()
+	// Method to get list of slow requests
+	GetSlowRequests()
 }

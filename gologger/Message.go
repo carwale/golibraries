@@ -12,12 +12,18 @@ type Message struct {
 	MaxLatency   int64
 	MinLatency   int64
 	Module       string // Module name
+	SlowRequests [5]string
+}
+type updatePacket struct {
+	key   string
+	value int64
 }
 
 // Update the message with calculated latency
-func (msg *Message) Update(elapsed int64) {
+func (msg *Message) Update(packet *updatePacket) {
 	msg.Requests++
-	latency := elapsed
+	msg.SlowRequests = append(msg.SlowRequests, packet.key)
+	latency := packet.value
 	msg.TotalLatency += latency
 	if latency < msg.MinLatency {
 		msg.MinLatency = latency
@@ -25,10 +31,11 @@ func (msg *Message) Update(elapsed int64) {
 	if latency > msg.MaxLatency {
 		msg.MaxLatency = latency
 	}
+
 }
 
 // Jsonify : method to Jsonify the message struct
-func (msg *Message) Jsonify() string {
+func (msg *Message) Jsonify() string, []string {
 	if msg.Requests <= 0 {
 		return ""
 	}
@@ -37,7 +44,7 @@ func (msg *Message) Jsonify() string {
 	if minLatency == math.MaxInt32 {
 		minLatency = 0
 	}
-	return fmt.Sprintf(`{"module": %q,"requestRate": %d,"meanLatency": %d,"maxLatency": %d,"minLatency": %d}`, msg.Module, msg.Requests, meanLatency, msg.MaxLatency, minLatency)
+	return fmt.Sprintf(`{"module": %q,"requestRate": %d,"meanLatency": %d,"maxLatency": %d,"minLatency": %d}`, msg.Module, msg.Requests, meanLatency, msg.MaxLatency, minLatency), msg.SlowRequests
 }
 
 // Reset : Method to Reset the message struct
@@ -48,6 +55,11 @@ func (msg *Message) Reset() {
 	msg.MinLatency = math.MaxInt32
 }
 
+// GetSlowRequests : Method to get list of slow requests, each element contains
+func (msg *Message) GetSlowRequests() []string {
+	return msg.SlowRequests
+}
+
 // NewMessage returns default message instance
 func NewMessage(module string) IMessage {
 	return &Message{
@@ -56,5 +68,6 @@ func NewMessage(module string) IMessage {
 		MaxLatency:   0,
 		MinLatency:   math.MaxInt32,
 		Module:       module,
+		SlowRequests : string[]{}
 	}
 }
