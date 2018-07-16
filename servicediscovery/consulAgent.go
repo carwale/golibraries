@@ -8,7 +8,6 @@ import (
 	"strconv"
 
 	"github.com/carwale/golibraries/healthcheck"
-	"github.com/phayes/freeport"
 
 	"github.com/carwale/golibraries/gologger"
 	"github.com/carwale/golibraries/goutilities"
@@ -17,12 +16,11 @@ import (
 
 // ConsulAgent is the custom consul agent that will be used by all go lang applications
 type ConsulAgent struct {
-	consulHostName          string
-	consulPortNumber        int
-	consulMonScriptName     string
-	consulServiceScriptName string
-	consulAgent             *api.Client
-	logger                  *gologger.CustomLogger
+	consulHostName      string
+	consulPortNumber    int
+	consulMonScriptName string
+	consulAgent         *api.Client
+	logger              *gologger.CustomLogger
 }
 
 // Options sets a parameter for consul agent
@@ -57,17 +55,6 @@ func ConsulMonScriptName(name string) Options {
 	}
 }
 
-//ConsulServiceScriptName sets the name of the service check script
-//The script should be located in the mon folder of the application
-//Defaults to consultest.py
-func ConsulServiceScriptName(name string) Options {
-	return func(c *ConsulAgent) {
-		if name != "" {
-			c.consulServiceScriptName = name
-		}
-	}
-}
-
 //Logger sets the logger for consul
 //Defaults to consul logger
 func Logger(customLogger *gologger.CustomLogger) Options {
@@ -78,11 +65,10 @@ func Logger(customLogger *gologger.CustomLogger) Options {
 func NewConsulAgent(options ...Options) IServiceDiscoveryAgent {
 
 	c := &ConsulAgent{
-		consulHostName:          "127.0.0.1",
-		consulPortNumber:        8500,
-		consulMonScriptName:     "mon.py",
-		consulServiceScriptName: "consultest.py",
-		logger:                  gologger.NewLogger(),
+		consulHostName:      "127.0.0.1",
+		consulPortNumber:    8500,
+		consulMonScriptName: "mon.py",
+		logger:              gologger.NewLogger(),
 	}
 
 	for _, option := range options {
@@ -103,19 +89,19 @@ func NewConsulAgent(options ...Options) IServiceDiscoveryAgent {
 //RegisterServiceOnDocker will register the service on consul
 //It will register one gRPC check for the service. The mon check will not be required in this case
 //The service check script should check whether the service is running or not.
-func (c *ConsulAgent) RegisterServiceOnDocker(name, ipAddress, port string, checkFunction func() (bool, error)) (string, error) {
-	return c.registerService(name, ipAddress, port, checkFunction, true)
+func (c *ConsulAgent) RegisterServiceOnDocker(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error)) (string, error) {
+	return c.registerService(name, ipAddress, port, healthCheckPort, checkFunction, true)
 }
 
 //RegisterService will register the service on consul
 //It will also register two checks for the service. A mon check and a gRPC check
 //mon check can be used for releases while the gRPC service check script should check
 //whether the service is running or not.
-func (c *ConsulAgent) RegisterService(name, ipAddress, port string, checkFunction func() (bool, error)) (string, error) {
-	return c.registerService(name, ipAddress, port, checkFunction, false)
+func (c *ConsulAgent) RegisterService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error)) (string, error) {
+	return c.registerService(name, ipAddress, port, healthCheckPort, checkFunction, false)
 }
 
-func (c *ConsulAgent) registerService(name, ipAddress, port string, checkFunction func() (bool, error), isDockerType bool) (string, error) {
+func (c *ConsulAgent) registerService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error), isDockerType bool) (string, error) {
 	consulServiceName := name
 	gatewayPort, err := strconv.Atoi(port[1:])
 	if err != nil {
@@ -145,7 +131,7 @@ func (c *ConsulAgent) registerService(name, ipAddress, port string, checkFunctio
 		}
 	}
 
-	ok := c.registerGrpcCheck(serviceID, "checkService", name+" check service", ipAddress, checkFunction)
+	ok := c.registerGrpcCheck(serviceID, "checkService", name+" check service", ipAddress, healthCheckPort, checkFunction)
 	if !ok {
 		err = errors.New("Could not register gRPC consul service check")
 	}
@@ -177,6 +163,7 @@ func (c *ConsulAgent) registerCheck(serviceID, checkID, checkName, scriptLocatio
 			Args:     []string{scriptLocation},
 			Interval: "10s",
 			Timeout:  "5s",
+			DeregisterCriticalServiceAfter: "24h",
 		},
 	})
 	if err != nil {
@@ -186,25 +173,17 @@ func (c *ConsulAgent) registerCheck(serviceID, checkID, checkName, scriptLocatio
 	return true
 }
 
-func (c *ConsulAgent) registerGrpcCheck(serviceID, checkID, checkName, ipAddress string, checkFunction func() (bool, error)) bool {
-	port, err := freeport.GetFreePort()
-	if err != nil {
-		c.logger.LogError("Could not get free port", err)
-		return false
-	}
-	ok := healthcheck.NewHealthCheckServer(":"+strconv.Itoa(port), checkFunction, healthcheck.Logger(c.logger))
-	if !ok {
-		c.logger.LogErrorWithoutError("Could not start health server")
-	}
-	err = c.consulAgent.Agent().CheckRegister(&api.AgentCheckRegistration{
+func (c *ConsulAgent) registerGrpcCheck(serviceID, checkID, checkName, ipAddress, healthCheckPort string, checkFunction func() (bool, error)) bool {
+	healthcheck.NewHealthCheckServer(healthCheckPort, checkFunction, healthcheck.Logger(c.logger))
+	err := c.consulAgent.Agent().CheckRegister(&api.AgentCheckRegistration{
 		ID:        serviceID + checkID,
 		Name:      checkName,
 		ServiceID: serviceID,
 		AgentServiceCheck: api.AgentServiceCheck{
-			GRPC:     ipAddress + ":" + strconv.Itoa(port),
+			GRPC:     ipAddress + healthCheckPort,
 			Interval: "10s",
 			Timeout:  "1s",
-			DeregisterCriticalServiceAfter: "1d",
+			DeregisterCriticalServiceAfter: "24h",
 			GRPCUseTLS:                     false,
 		},
 	})

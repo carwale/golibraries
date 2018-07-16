@@ -67,7 +67,7 @@ func NewK8sClient(options ...K8SOptions) IServiceDiscoveryAgent {
 	return client
 }
 
-func (k *k8sClient) RegisterService(name, ipAddress, port string, checkFunction func() (bool, error)) (string, error) {
+func (k *k8sClient) RegisterService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error)) (string, error) {
 	return "", nil
 }
 

@@ -29,7 +29,7 @@ func Logger(customLogger *gologger.CustomLogger) Options {
 // NewHealthCheckServer starts a health check server with the given port.
 // It exposes a Check function that is compatible with consul
 // The check function will call the 'checkFunction' that is passed and will return accordingly
-func NewHealthCheckServer(healthCheckPort string, checkFunction func() (bool, error), options ...Options) bool {
+func NewHealthCheckServer(healthCheckPort string, checkFunction func() (bool, error), options ...Options) {
 	hcs := &healthCheckServer{
 		healthCheckPort: healthCheckPort,
 		checkFunction:   checkFunction,
@@ -43,7 +43,7 @@ func NewHealthCheckServer(healthCheckPort string, checkFunction func() (bool, er
 		hcs.logger = gologger.NewLogger()
 	}
 
-	return hcs.startHealthService()
+	go hcs.startHealthService()
 }
 
 func (hcs *healthCheckServer) Check(ctx context.Context, in *grpc_health_v1.HealthCheckRequest) (*grpc_health_v1.HealthCheckResponse, error) {
@@ -59,7 +59,7 @@ func (hcs *healthCheckServer) Check(ctx context.Context, in *grpc_health_v1.Heal
 	return &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}, nil
 }
 
-func (hcs *healthCheckServer) startHealthService() bool {
+func (hcs *healthCheckServer) startHealthService() {
 	lis, err := net.Listen("tcp", hcs.healthCheckPort)
 	if err != nil {
 		hcs.logger.LogError("failed to listen: %v", err)
@@ -70,7 +70,5 @@ func (hcs *healthCheckServer) startHealthService() bool {
 	reflection.Register(s)
 	if err := s.Serve(lis); err != nil {
 		hcs.logger.LogError("failed to serve health service: %v", err)
-		return false
 	}
-	return true
 }
