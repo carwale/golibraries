@@ -5,7 +5,7 @@ package servicediscovery
 type IServiceDiscoveryAgent interface {
 	//RegisterService will register the service given the name, ip and port
 	//It returns the ID of the service
-	RegisterService(name, ipAddress, port string) (string, error)
+	RegisterService(name, ipAddress, port string, checkFunction func() (bool, error)) (string, error)
 	//DeregisterService will deregister the service given the ID
 	DeregisterService(serviceID string)
 	//GetHealthyService will give a list of all the instances of the module

@@ -31,7 +31,7 @@
 
 [[constraint]]
   name = "github.com/hashicorp/consul"
-  version = "=1.0.6"
+  version = "=1.0.7"
 
 [[constraint]]
   name = "github.com/opentracing/opentracing-go"
@@ -72,3 +72,7 @@
 [prune]
   go-tests = true
   unused-packages = true
+
+[[constraint]]
+  name = "github.com/phayes/freeport"
+  version = "1.0.2"

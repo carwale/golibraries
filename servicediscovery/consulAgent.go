@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/carwale/golibraries/healthcheck"
+	"github.com/phayes/freeport"
+
 	"github.com/carwale/golibraries/gologger"
 	"github.com/carwale/golibraries/goutilities"
 	"github.com/hashicorp/consul/api"
@@ -97,11 +100,22 @@ func NewConsulAgent(options ...Options) IServiceDiscoveryAgent {
 	return c
 }
 
+//RegisterServiceOnDocker will register the service on consul
+//It will register one gRPC check for the service. The mon check will not be required in this case
+//The service check script should check whether the service is running or not.
+func (c *ConsulAgent) RegisterServiceOnDocker(name, ipAddress, port string, checkFunction func() (bool, error)) (string, error) {
+	return c.registerService(name, ipAddress, port, checkFunction, true)
+}
+
 //RegisterService will register the service on consul
-//It will also register two checks for the service. A mon check and a consultest check
-//mon check can be used for releases while the service check script should check
+//It will also register two checks for the service. A mon check and a gRPC check
+//mon check can be used for releases while the gRPC service check script should check
 //whether the service is running or not.
-func (c *ConsulAgent) RegisterService(name, ipAddress, port string) (string, error) {
+func (c *ConsulAgent) RegisterService(name, ipAddress, port string, checkFunction func() (bool, error)) (string, error) {
+	return c.registerService(name, ipAddress, port, checkFunction, false)
+}
+
+func (c *ConsulAgent) registerService(name, ipAddress, port string, checkFunction func() (bool, error), isDockerType bool) (string, error) {
 	consulServiceName := name
 	gatewayPort, err := strconv.Atoi(port[1:])
 	if err != nil {
@@ -122,16 +136,18 @@ func (c *ConsulAgent) RegisterService(name, ipAddress, port string) (string, err
 		c.logger.LogWarning("Could not get working directory. Setting it as current directory" + err.Error())
 		workingDir = "."
 	}
-	monScriptLocation := workingDir + string(os.PathSeparator) + "mon" + string(os.PathSeparator) + c.consulMonScriptName
-	serviceScriptLocation := workingDir + string(os.PathSeparator) + "mon" + string(os.PathSeparator) + c.consulServiceScriptName
 	err = nil
-	ok := c.registerCheck(serviceID, "checkMon", name+" check mon", monScriptLocation)
-	if !ok {
-		err = errors.New("Could not register consul service check")
+	if !isDockerType {
+		monScriptLocation := workingDir + string(os.PathSeparator) + "mon" + string(os.PathSeparator) + c.consulMonScriptName
+		ok := c.registerCheck(serviceID, "checkMon", name+" check mon", monScriptLocation)
+		if !ok {
+			err = errors.New("Could not register consul service check")
+		}
 	}
-	ok = c.registerCheck(serviceID, "checkService", name+" check service", serviceScriptLocation)
+
+	ok := c.registerGrpcCheck(serviceID, "checkService", name+" check service", ipAddress, checkFunction)
 	if !ok {
-		err = errors.New("Could not register consul service check")
+		err = errors.New("Could not register gRPC consul service check")
 	}
 	return serviceID, err
 }
@@ -161,6 +177,35 @@ func (c *ConsulAgent) registerCheck(serviceID, checkID, checkName, scriptLocatio
 			Args:     []string{scriptLocation},
 			Interval: "10s",
 			Timeout:  "5s",
+		},
+	})
+	if err != nil {
+		c.logger.LogError("Error registering service check in consul", err)
+		return false
+	}
+	return true
+}
+
+func (c *ConsulAgent) registerGrpcCheck(serviceID, checkID, checkName, ipAddress string, checkFunction func() (bool, error)) bool {
+	port, err := freeport.GetFreePort()
+	if err != nil {
+		c.logger.LogError("Could not get free port", err)
+		return false
+	}
+	ok := healthcheck.NewHealthCheckServer(":"+strconv.Itoa(port), checkFunction, healthcheck.Logger(c.logger))
+	if !ok {
+		c.logger.LogErrorWithoutError("Could not start health server")
+	}
+	err = c.consulAgent.Agent().CheckRegister(&api.AgentCheckRegistration{
+		ID:        serviceID + checkID,
+		Name:      checkName,
+		ServiceID: serviceID,
+		AgentServiceCheck: api.AgentServiceCheck{
+			GRPC:     ipAddress + ":" + strconv.Itoa(port),
+			Interval: "10s",
+			Timeout:  "1s",
+			DeregisterCriticalServiceAfter: "1d",
+			GRPCUseTLS:                     false,
 		},
 	})
 	if err != nil {
