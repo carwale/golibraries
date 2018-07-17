@@ -86,22 +86,11 @@ func NewConsulAgent(options ...Options) IServiceDiscoveryAgent {
 	return c
 }
 
-//RegisterServiceOnDocker will register the service on consul
-//It will register one gRPC check for the service. The mon check will not be required in this case
-//The service check script should check whether the service is running or not.
-func (c *ConsulAgent) RegisterServiceOnDocker(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error)) (string, error) {
-	return c.registerService(name, ipAddress, port, healthCheckPort, checkFunction, true)
-}
-
 //RegisterService will register the service on consul
 //It will also register two checks for the service. A mon check and a gRPC check
 //mon check can be used for releases while the gRPC service check script should check
 //whether the service is running or not.
-func (c *ConsulAgent) RegisterService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error)) (string, error) {
-	return c.registerService(name, ipAddress, port, healthCheckPort, checkFunction, false)
-}
-
-func (c *ConsulAgent) registerService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error), isDockerType bool) (string, error) {
+func (c *ConsulAgent) RegisterService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error), isDockerType bool) (string, error) {
 	consulServiceName := name
 	gatewayPort, err := strconv.Atoi(port[1:])
 	if err != nil {
