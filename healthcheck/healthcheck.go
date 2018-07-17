@@ -65,7 +65,7 @@ func (hcs *healthCheckServer) startHealthService() {
 		hcs.logger.LogError("failed to listen: %v", err)
 	}
 	s := grpc.NewServer()
-	grpc_health_v1.RegisterHealthServer(s, &healthCheckServer{})
+	grpc_health_v1.RegisterHealthServer(s, hcs)
 	// Register reflection service on gRPC server.
 	reflection.Register(s)
 	if err := s.Serve(lis); err != nil {
