@@ -1,3 +1,5 @@
+[![Go Report Card](https://goreportcard.com/badge/github.com/carwale/golibraries)](https://goreportcard.com/report/github.com/carwale/golibraries)
+
 # golibraries
 Utility libraries for golang
 
