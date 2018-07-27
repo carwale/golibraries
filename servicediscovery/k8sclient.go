@@ -30,9 +30,9 @@ func IsInK8SCluster(flag bool) K8SOptions {
 }
 
 //SetK8sNamespace sets the namespace to be used for querying k8s. Defaults to 'default'
-func SetK8sNamespace(flag bool) K8SOptions {
+func SetK8sNamespace(namespace string) K8SOptions {
 	return func(k *k8sClient) {
-		k.isInK8sCluster = flag
+		k.namespace = namespace
 	}
 }
 
