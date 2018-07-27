@@ -17,21 +17,31 @@ import (
 type k8sClient struct {
 	client         *kubernetes.Clientset
 	isInK8sCluster bool
+	namespace      string
 }
 
 type K8SOptions func(k *k8sClient)
 
-//IsInK8SCluster sets the IP for consul agent. Defults to 127.0.0.1
+//IsInK8SCluster sets whether running inside kubernetes cluster. Defults to true.
 func IsInK8SCluster(flag bool) K8SOptions {
 	return func(k *k8sClient) {
 		k.isInK8sCluster = flag
 	}
 }
 
+//SetK8sNamespace sets the namespace to be used for querying k8s. Defaults to 'default'
+func SetK8sNamespace(flag bool) K8SOptions {
+	return func(k *k8sClient) {
+		k.isInK8sCluster = flag
+	}
+}
+
+//NewK8sClient returns new K8s Service discovery agent
 func NewK8sClient(options ...K8SOptions) IServiceDiscoveryAgent {
 
 	client := &k8sClient{
 		isInK8sCluster: true,
+		namespace:      "default",
 	}
 
 	for _, option := range options {
@@ -78,7 +88,7 @@ func (k *k8sClient) DeregisterService(serviceID string) {
 // GetHealthyServicesFromK8sCluster returns service instances from k8s cluster
 func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
 
-	endpoints, err := k.client.CoreV1().Endpoints("default").Get(moduleName, metav1.GetOptions{})
+	endpoints, err := k.client.CoreV1().Endpoints(k.namespace).Get(moduleName, metav1.GetOptions{})
 
 	if err != nil {
 		return nil, err
