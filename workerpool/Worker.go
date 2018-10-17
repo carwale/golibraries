@@ -85,6 +85,13 @@ func SetLogger(logger *gologger.CustomLogger) Option {
 	}
 }
 
+// SetJobQueue sets the JobQueue in dispatcher
+func SetJobQueue(jobQueue chan IJob) Option {
+	return func(d *Dispatcher) {
+		d.JobQueue = jobQueue
+	}
+}
+
 // Dispatcher holds worker pool, job queue and manages workers and job
 // To submit a job to worker pool, use code
 // `dispatcher.JobQueue <- job`
