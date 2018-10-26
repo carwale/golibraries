@@ -15,6 +15,11 @@ func (msg *HistogramMetric) Update(elapsed int64, labels ...string) {
 	msg.histogram.WithLabelValues(labels...).Observe(float64(elapsed) / 1000)
 }
 
+// Count is a do nothing function for histogram
+func (msg *HistogramMetric) Count(count int64, labels ...string) {
+	msg.logger.LogWarning("Cannot use Count for histogram metric")
+}
+
 //RemoveLogging will stop logging for specific labels
 func (msg *HistogramMetric) RemoveLogging(labels ...string) {
 	ok := msg.histogram.DeleteLabelValues(labels...)

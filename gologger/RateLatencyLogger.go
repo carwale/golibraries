@@ -16,7 +16,7 @@ type updatePacket struct {
 type RateLatencyLogger struct {
 	messages     map[string]IMetricVec // Map that holds all module's messages
 	updateTunnel chan updatePacket     // Channel which updates latency in message
-	addMetric    chan updatePacket
+	countTunnel  chan updatePacket
 	logger       *CustomLogger
 	once         sync.Once
 	isRan        bool
@@ -35,6 +35,13 @@ func (mgl *RateLatencyLogger) Toc(start time.Time, identifier string, labels ...
 	}
 }
 
+//IncVal is used for counters and gauges
+func (mgl *RateLatencyLogger) IncVal(value int64, identifier string, labels ...string) {
+	if mgl.isRan {
+		mgl.countTunnel <- updatePacket{identifier, labels, value}
+	}
+}
+
 // Run : Starts the logger in a go routine.
 // Calling this multiple times doesn't have any effect
 func (mgl *RateLatencyLogger) Run() {
@@ -48,6 +55,12 @@ func (mgl *RateLatencyLogger) Run() {
 						mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger")
 					}
 					msg.Update(packet.value, packet.labels...)
+				case packet := <-mgl.countTunnel:
+					msg, ok := mgl.messages[packet.identifier]
+					if !ok {
+						mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger")
+					}
+					msg.Count(packet.value, packet.labels...)
 				}
 			}
 		}()
@@ -80,7 +93,8 @@ func SetLogger(logger *CustomLogger) RateLatencyOption {
 func NewRateLatencyLogger(options ...RateLatencyOption) IMultiLogger {
 	rl := &RateLatencyLogger{
 		messages:     map[string]IMetricVec{},
-		updateTunnel: make(chan updatePacket, 100),
+		updateTunnel: make(chan updatePacket, 10000),
+		countTunnel:  make(chan updatePacket, 10000),
 		logger:       nil,
 	}
 

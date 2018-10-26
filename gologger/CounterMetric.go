@@ -10,9 +10,14 @@ type CounterMetric struct {
 	logger  *CustomLogger
 }
 
-// Update the message with calculated latency
+// Update is a do nothing operation for counter metric
 func (msg *CounterMetric) Update(elapsed int64, labels ...string) {
-	msg.counter.WithLabelValues(labels...).Inc()
+	msg.logger.LogWarning("Cannot use Update for counter metric")
+}
+
+// Count will increment the counter by value
+func (msg *CounterMetric) Count(count int64, labels ...string) {
+	msg.counter.WithLabelValues(labels...).Add(float64(count))
 }
 
 //RemoveLogging will stop logging for specific labels
@@ -24,8 +29,8 @@ func (msg *CounterMetric) RemoveLogging(labels ...string) {
 }
 
 //NewCounterMetric creates a new histrogram message and registers it to prometheus
-func NewCounterMetric(hist *prometheus.CounterVec, logger *CustomLogger) *CounterMetric {
-	msg := &CounterMetric{hist, logger}
-	prometheus.MustRegister(hist)
+func NewCounterMetric(counter *prometheus.CounterVec, logger *CustomLogger) *CounterMetric {
+	msg := &CounterMetric{counter, logger}
+	prometheus.MustRegister(counter)
 	return msg
 }
