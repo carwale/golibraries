@@ -10,14 +10,24 @@ type HistogramMetric struct {
 	logger    *CustomLogger
 }
 
-// Update the message with calculated latency
-func (msg *HistogramMetric) Update(elapsed int64, labels ...string) {
+// UpdateTime the message with calculated latency
+func (msg *HistogramMetric) UpdateTime(elapsed int64, labels ...string) {
 	msg.histogram.WithLabelValues(labels...).Observe(float64(elapsed) / 1000)
 }
 
-// Count is a do nothing function for histogram
-func (msg *HistogramMetric) Count(count int64, labels ...string) {
-	msg.logger.LogWarning("Cannot use Count for histogram metric")
+// AddValue is a do nothing function for histogram
+func (msg *HistogramMetric) AddValue(count int64, labels ...string) {
+	msg.logger.LogWarning("Cannot use IncValue for histogram metric")
+}
+
+// SubValue is a do nothing function for histogram
+func (msg *HistogramMetric) SubValue(count int64, labels ...string) {
+	msg.logger.LogWarning("Cannot use SubValue for histogram metric")
+}
+
+// SetValue is a do nothing function for histogram
+func (msg *HistogramMetric) SetValue(count int64, labels ...string) {
+	msg.logger.LogWarning("Cannot use SetValue for histogram metric")
 }
 
 //RemoveLogging will stop logging for specific labels

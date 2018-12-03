@@ -10,14 +10,24 @@ type CounterMetric struct {
 	logger  *CustomLogger
 }
 
-// Update is a do nothing operation for counter metric
-func (msg *CounterMetric) Update(elapsed int64, labels ...string) {
+// UpdateTime is a do nothing operation for counter metric
+func (msg *CounterMetric) UpdateTime(elapsed int64, labels ...string) {
 	msg.logger.LogWarning("Cannot use Update for counter metric")
 }
 
-// Count will increment the counter by value
-func (msg *CounterMetric) Count(count int64, labels ...string) {
+// AddValue will increment the counter by value
+func (msg *CounterMetric) AddValue(count int64, labels ...string) {
 	msg.counter.WithLabelValues(labels...).Add(float64(count))
+}
+
+// SubValue will not do anything. It is not allowed in counters
+func (msg *CounterMetric) SubValue(count int64, labels ...string) {
+	msg.logger.LogWarning("Cannot subtract values from counters")
+}
+
+// SetValue will not do anything. It is not allowed in counters
+func (msg *CounterMetric) SetValue(count int64, labels ...string) {
+	msg.logger.LogWarning("Cannot reset counters")
 }
 
 //RemoveLogging will stop logging for specific labels

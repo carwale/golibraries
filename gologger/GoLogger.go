@@ -11,6 +11,8 @@ type IMultiLogger interface {
 	Tic() time.Time
 	Toc(time.Time, string, ...string)
 	IncVal(int64, string, ...string)
+	SubVal(int64, string, ...string)
+	SetVal(int64, string, ...string)
 	// Starts the logger in a go routine
 	Run()
 	AddNewMetric(string, IMetricVec)
@@ -18,9 +20,13 @@ type IMultiLogger interface {
 
 // IMetricVec : Interface to implement for Message type
 type IMetricVec interface {
-	Update(int64, ...string)
+	UpdateTime(int64, ...string)
 	//Method to count increments or gauges
-	Count(int64, ...string)
+	AddValue(int64, ...string)
+	// Method to subtract from the counter
+	SubValue(int64, ...string)
+	// Method to set the counter
+	SetValue(int64, ...string)
 	// Method to Remove the label from the metric
 	RemoveLogging(...string)
 }
