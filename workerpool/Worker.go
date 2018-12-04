@@ -1,10 +1,8 @@
 package workerpool
 
 import (
-	"strconv"
-	"time"
-
 	"github.com/carwale/golibraries/gologger"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // IJob : Interface for the Job to be processed
@@ -85,6 +83,14 @@ func SetLogger(logger *gologger.CustomLogger) Option {
 	}
 }
 
+// SetLatencyLogger sets the latency logger for the dispatcher
+// This should be set in order to get the max worker count
+func SetLatencyLogger(logger gologger.IMultiLogger) Option {
+	return func(d *Dispatcher) {
+		d.latencyLogger = logger
+	}
+}
+
 // SetJobQueue sets the JobQueue in dispatcher
 func SetJobQueue(jobQueue chan IJob) Option {
 	return func(d *Dispatcher) {
@@ -92,17 +98,22 @@ func SetJobQueue(jobQueue chan IJob) Option {
 	}
 }
 
+const maxWorkerGaugeMetricID = "MAX-WORKERS"
+
 // Dispatcher holds worker pool, job queue and manages workers and job
 // To submit a job to worker pool, use code
 // `dispatcher.JobQueue <- job`
 type Dispatcher struct {
-	workerPool     chan chan IJob // A pool of workers channels that are registered with the dispatcher
-	maxWorkers     int
-	newWorker      func(chan chan IJob, int) IWorker
-	JobQueue       chan IJob
-	workerTracker  chan int
-	maxUsedWorkers int
-	logger         *gologger.CustomLogger
+	workerPool            chan chan IJob // A pool of workers channels that are registered with the dispatcher
+	maxWorkers            int
+	newWorker             func(chan chan IJob, int) IWorker
+	JobQueue              chan IJob
+	workerTracker         chan int
+	maxUsedWorkers        int
+	latencyLogger         gologger.IMultiLogger
+	resetMaxWorkerCount   chan bool
+	maxWorkersGaugeMetric *gologger.GaugeMetric
+	logger                *gologger.CustomLogger
 }
 
 func (d *Dispatcher) run() {
@@ -136,24 +147,30 @@ func (d *Dispatcher) dispatch() {
 }
 
 func (d *Dispatcher) trackWorkers() {
-	ticker := time.NewTicker(time.Duration(60) * time.Second)
 	go func() {
 		for {
 			select {
-			case <-ticker.C:
+			case <-d.resetMaxWorkerCount:
 				// push to logger
-				if d.maxUsedWorkers > 0 {
-					d.logger.LogInfoMessage("max used workers", gologger.Pair{Key: "maxWorkers", Value: strconv.Itoa(d.maxUsedWorkers)})
-					d.maxUsedWorkers = 0
-				}
+				d.latencyLogger.SetVal(0, maxWorkerGaugeMetricID)
+				d.logger.LogDebug("setting max workers to zero")
+				d.maxUsedWorkers = 0
 			case numWorkers := <-d.workerTracker:
 				// update used workers
 				if numWorkers > d.maxUsedWorkers {
 					d.maxUsedWorkers = numWorkers
+					d.logger.LogDebug("setting max workers to " + string(numWorkers))
+					d.latencyLogger.SetVal(int64(numWorkers), maxWorkerGaugeMetricID)
 				}
 			}
 		}
 	}()
+}
+
+//ResetDispatcherMaxWorkerUsed should be called whenever the max worker count needs to be reset
+func (d *Dispatcher) ResetDispatcherMaxWorkerUsed() {
+	d.logger.LogDebug("Reseting max worker count")
+	d.resetMaxWorkerCount <- true
 }
 
 // NewDispatcher : returns a new dispatcher. When no options are given, it returns a dispatcher with default settings
@@ -162,17 +179,33 @@ func (d *Dispatcher) trackWorkers() {
 // Set log level to INFO to track max used workers.
 func NewDispatcher(options ...Option) *Dispatcher {
 	d := &Dispatcher{
-		maxWorkers:    10,
-		newWorker:     newWorker,
-		JobQueue:      make(chan IJob),
-		workerTracker: make(chan int, 10),
-		logger:        gologger.NewLogger(gologger.SetLogLevel("INFO")),
+		maxWorkers:          10,
+		newWorker:           newWorker,
+		JobQueue:            make(chan IJob),
+		workerTracker:       make(chan int, 10),
+		resetMaxWorkerCount: make(chan bool),
 	}
 
 	for _, option := range options {
 		option(d)
 	}
 
+	if d.logger == nil {
+		d.logger = gologger.NewLogger(gologger.SetLogLevel("INFO"))
+	}
+	if d.latencyLogger == nil {
+		d.latencyLogger = gologger.NewRateLatencyLogger(gologger.SetLogger(d.logger))
+		d.latencyLogger.Run()
+	}
+	maxWorkerGaugeMetric := gologger.NewGaugeMetric(prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "max_workers",
+			Help: "What are the max number of workers used",
+		},
+		[]string{},
+	), d.logger)
+	d.latencyLogger.AddNewMetric(maxWorkerGaugeMetricID, maxWorkerGaugeMetric)
+	d.logger.LogDebug("New dispacther created")
 	d.workerPool = make(chan chan IJob, d.maxWorkers)
 	d.run()
 	return d
