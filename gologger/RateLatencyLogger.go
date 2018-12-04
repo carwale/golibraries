@@ -69,24 +69,28 @@ func (mgl *RateLatencyLogger) Run() {
 					msg, ok := mgl.messages[packet.identifier]
 					if !ok {
 						mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
+						continue
 					}
 					msg.UpdateTime(packet.value, packet.labels...)
 				case packet := <-mgl.countIncTunnel:
 					msg, ok := mgl.messages[packet.identifier]
 					if !ok {
 						mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
+						continue
 					}
 					msg.AddValue(packet.value, packet.labels...)
 				case packet := <-mgl.countSubTunnel:
 					msg, ok := mgl.messages[packet.identifier]
 					if !ok {
 						mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
+						continue
 					}
 					msg.SubValue(packet.value, packet.labels...)
 				case packet := <-mgl.countSetTunnel:
 					msg, ok := mgl.messages[packet.identifier]
 					if !ok {
 						mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
+						continue
 					}
 					msg.SetValue(packet.value, packet.labels...)
 				}
