@@ -203,7 +203,7 @@ func (c *ConsulAgent) GetHealthyService(moduleName string) ([]string, error) {
 	ipAddList := make([]string, 0)
 	if len(res) == 0 {
 		err = errors.New("No healthy instance of module " + moduleName + " found")
-		c.logger.LogError("No instance found for module "+moduleName+" from consul", err)
+		c.logger.LogInfo("No instance found for module "+moduleName+" from consul")
 		return ipAddList, err
 	}
 	for _, val := range res {
