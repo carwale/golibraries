@@ -1,6 +1,7 @@
 package workerpool
 
 import (
+	"sync"
 	"github.com/carwale/golibraries/gologger"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -57,6 +58,20 @@ func newWorker(workerPool chan chan IJob, number int) IWorker {
 	}
 }
 
+var once sync.Once
+var gaugeMetric *gologger.GaugeMetric
+func GetGaugeMetric(logger *gologger.CustomLogger) *gologger.GaugeMetric {
+	once.Do(func() {
+		gaugeMetric = gologger.NewGaugeMetric(prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "max_workers",
+				Help: "What are the max number of workers used",
+			},
+			[]string{},
+		), logger)})
+	return gaugeMetric
+}
+
 // Option sets a parameter for the Dispatcher
 type Option func(d *Dispatcher)
 
@@ -66,6 +81,12 @@ func SetMaxWorkers(maxWorkers int) Option {
 		if maxWorkers > 0 {
 			d.maxWorkers = maxWorkers
 		}
+	}
+}
+// SetDispatcherName sets the name of dispatcher
+func SetDispatcherName(name string) Option {
+	return func(d *Dispatcher) {
+		d.Name = name
 	}
 }
 
@@ -104,6 +125,7 @@ const maxWorkerGaugeMetricID = "MAX-WORKERS"
 // To submit a job to worker pool, use code
 // `dispatcher.JobQueue <- job`
 type Dispatcher struct {
+	Name				  string
 	workerPool            chan chan IJob // A pool of workers channels that are registered with the dispatcher
 	maxWorkers            int
 	newWorker             func(chan chan IJob, int) IWorker
@@ -197,13 +219,7 @@ func NewDispatcher(options ...Option) *Dispatcher {
 		d.latencyLogger = gologger.NewRateLatencyLogger(gologger.SetLogger(d.logger))
 		d.latencyLogger.Run()
 	}
-	maxWorkerGaugeMetric := gologger.NewGaugeMetric(prometheus.NewGaugeVec(
-		prometheus.GaugeOpts{
-			Name: "max_workers",
-			Help: "What are the max number of workers used",
-		},
-		[]string{},
-	), d.logger)
+	maxWorkerGaugeMetric := GetGaugeMetric(d.logger)
 	d.latencyLogger.AddNewMetric(maxWorkerGaugeMetricID, maxWorkerGaugeMetric)
 	d.logger.LogDebug("New dispacther created")
 	d.workerPool = make(chan chan IJob, d.maxWorkers)
