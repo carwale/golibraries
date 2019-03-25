@@ -119,8 +119,10 @@ type Dispatcher struct {
 func (d *Dispatcher) run() {
 	// starting n number of workers
 	for i := 0; i < d.maxWorkers; i++ {
-		worker := d.newWorker(d.workerPool, i) // Initialise a new worker
-		worker.Start()                         // Start the worker
+		go func(j int) {
+			worker := d.newWorker(d.workerPool, j) // Initialise a new worker
+			worker.Start()
+		}(i) // Start the worker
 	}
 	d.trackWorkers() // Start tracking used workers
 	go d.dispatch()  // Start the dispatcher
