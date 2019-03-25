@@ -119,10 +119,8 @@ type Dispatcher struct {
 func (d *Dispatcher) run() {
 	// starting n number of workers
 	for i := 0; i < d.maxWorkers; i++ {
-		go func(j int) {
-			worker := d.newWorker(d.workerPool, j) // Initialise a new worker
-			worker.Start()                         // Start the worker
-		}(i)
+		worker := d.newWorker(d.workerPool, i) // Initialise a new worker
+		worker.Start()                         // Start the worker
 	}
 	d.trackWorkers() // Start tracking used workers
 	go d.dispatch()  // Start the dispatcher
@@ -132,16 +130,13 @@ func (d *Dispatcher) dispatch() {
 	for {
 		select {
 		case job := <-d.JobQueue:
-			// a job request has been received
-			go func(job IJob) {
-				// try to obtain a worker job channel that is available.
-				// this will block until a worker is idle
-				jobChannel := <-d.workerPool
-				// track number of workers processing concurrently
-				d.workerTracker <- d.maxWorkers - len(d.workerPool)
-				// dispatch the job to the worker job channel
-				jobChannel <- job
-			}(job)
+			// try to obtain a worker job channel that is available.
+			// this will block until a worker is idle
+			jobChannel := <-d.workerPool
+			// track number of workers processing concurrently
+			d.workerTracker <- d.maxWorkers - len(d.workerPool)
+			// dispatch the job to the worker job channel
+			jobChannel <- job
 		}
 	}
 }
@@ -181,7 +176,6 @@ func NewDispatcher(options ...Option) *Dispatcher {
 	d := &Dispatcher{
 		maxWorkers:          10,
 		newWorker:           newWorker,
-		JobQueue:            make(chan IJob),
 		workerTracker:       make(chan int, 10),
 		resetMaxWorkerCount: make(chan bool),
 	}
@@ -189,7 +183,9 @@ func NewDispatcher(options ...Option) *Dispatcher {
 	for _, option := range options {
 		option(d)
 	}
-
+	if d.JobQueue == nil {
+		d.JobQueue = make(chan IJob, d.maxWorkers)
+	}
 	if d.logger == nil {
 		d.logger = gologger.NewLogger(gologger.SetLogLevel("INFO"))
 	}
