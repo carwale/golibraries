@@ -67,7 +67,7 @@ func GetGaugeMetric(logger *gologger.CustomLogger) *gologger.GaugeMetric {
 				Name: "max_workers",
 				Help: "What are the max number of workers used",
 			},
-			[]string{},
+			[]string{"dispatcherName"},
 		), logger)})
 	return gaugeMetric
 }
@@ -174,7 +174,7 @@ func (d *Dispatcher) trackWorkers() {
 			select {
 			case <-d.resetMaxWorkerCount:
 				// push to logger
-				d.latencyLogger.SetVal(0, maxWorkerGaugeMetricID)
+				d.latencyLogger.SetVal(0, maxWorkerGaugeMetricID, d.Name)
 				d.logger.LogDebug("setting max workers to zero")
 				d.maxUsedWorkers = 0
 			case numWorkers := <-d.workerTracker:
@@ -182,7 +182,7 @@ func (d *Dispatcher) trackWorkers() {
 				if numWorkers > d.maxUsedWorkers {
 					d.maxUsedWorkers = numWorkers
 					d.logger.LogDebug("setting max workers to " + string(numWorkers))
-					d.latencyLogger.SetVal(int64(numWorkers), maxWorkerGaugeMetricID)
+					d.latencyLogger.SetVal(int64(numWorkers), maxWorkerGaugeMetricID, d.Name)
 				}
 			}
 		}
