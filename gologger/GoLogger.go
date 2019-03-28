@@ -13,8 +13,6 @@ type IMultiLogger interface {
 	IncVal(int64, string, ...string)
 	SubVal(int64, string, ...string)
 	SetVal(int64, string, ...string)
-	// Starts the logger in a go routine
-	Run()
 	AddNewMetric(string, IMetricVec)
 }
 
