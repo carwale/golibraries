@@ -1,7 +1,6 @@
 package gologger
 
 import (
-	"sync"
 	"time"
 )
 
@@ -20,9 +19,10 @@ type RateLatencyLogger struct {
 	countSubTunnel chan updatePacket
 	countSetTunnel chan updatePacket
 	logger         *CustomLogger
-	once           sync.Once
 	isRan          bool
 }
+
+var rateLatencyLogger *RateLatencyLogger
 
 // Tic starts the timer
 func (mgl *RateLatencyLogger) Tic() time.Time {
@@ -58,46 +58,45 @@ func (mgl *RateLatencyLogger) SetVal(value int64, identifier string, labels ...s
 	}
 }
 
-// Run : Starts the logger in a go routine.
+// run : Starts the logger in a go routine.
 // Calling this multiple times doesn't have any effect
-func (mgl *RateLatencyLogger) Run() {
-	mgl.once.Do(func() {
-		go func() {
-			for {
-				select {
-				case packet := <-mgl.updateTunnel:
-					msg, ok := mgl.messages[packet.identifier]
-					if !ok {
-						mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
-						continue
-					}
-					msg.UpdateTime(packet.value, packet.labels...)
-				case packet := <-mgl.countIncTunnel:
-					msg, ok := mgl.messages[packet.identifier]
-					if !ok {
-						mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
-						continue
-					}
-					msg.AddValue(packet.value, packet.labels...)
-				case packet := <-mgl.countSubTunnel:
-					msg, ok := mgl.messages[packet.identifier]
-					if !ok {
-						mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
-						continue
-					}
-					msg.SubValue(packet.value, packet.labels...)
-				case packet := <-mgl.countSetTunnel:
-					msg, ok := mgl.messages[packet.identifier]
-					if !ok {
-						mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
-						continue
-					}
-					msg.SetValue(packet.value, packet.labels...)
+func (mgl *RateLatencyLogger) run() {
+
+	go func() {
+		for {
+			select {
+			case packet := <-mgl.updateTunnel:
+				msg, ok := mgl.messages[packet.identifier]
+				if !ok {
+					mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
+					continue
 				}
+				msg.UpdateTime(packet.value, packet.labels...)
+			case packet := <-mgl.countIncTunnel:
+				msg, ok := mgl.messages[packet.identifier]
+				if !ok {
+					mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
+					continue
+				}
+				msg.AddValue(packet.value, packet.labels...)
+			case packet := <-mgl.countSubTunnel:
+				msg, ok := mgl.messages[packet.identifier]
+				if !ok {
+					mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
+					continue
+				}
+				msg.SubValue(packet.value, packet.labels...)
+			case packet := <-mgl.countSetTunnel:
+				msg, ok := mgl.messages[packet.identifier]
+				if !ok {
+					mgl.logger.LogErrorWithoutError("wrong identifier passed. Could not find metric logger with identifier " + packet.identifier)
+					continue
+				}
+				msg.SetValue(packet.value, packet.labels...)
 			}
-		}()
-		mgl.isRan = true
-	})
+		}
+	}()
+	mgl.isRan = true
 }
 
 // AddNewMetric sets New message initialisation function
@@ -123,7 +122,10 @@ func SetLogger(logger *CustomLogger) RateLatencyOption {
 // When no options are given, it returns a RateLatencyLogger with default settings.
 // Default logger is default custom logger.
 func NewRateLatencyLogger(options ...RateLatencyOption) IMultiLogger {
-	rl := &RateLatencyLogger{
+	if rateLatencyLogger != nil {
+		return rateLatencyLogger
+	}
+	rateLatencyLogger = &RateLatencyLogger{
 		messages:       map[string]IMetricVec{},
 		updateTunnel:   make(chan updatePacket, 10000),
 		countIncTunnel: make(chan updatePacket, 10000),
@@ -133,12 +135,12 @@ func NewRateLatencyLogger(options ...RateLatencyOption) IMultiLogger {
 	}
 
 	for _, option := range options {
-		option(rl)
+		option(rateLatencyLogger)
 	}
 
-	if rl.logger == nil {
-		rl.logger = NewLogger()
+	if rateLatencyLogger.logger == nil {
+		rateLatencyLogger.logger = NewLogger()
 	}
-
-	return rl
+	rateLatencyLogger.run()
+	return rateLatencyLogger
 }
