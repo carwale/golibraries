@@ -154,7 +154,6 @@ func (d *Dispatcher) trackWorkers() {
 			select {
 			case <-d.resetMaxWorkerCount:
 				// push to logger
-				d.latencyLogger.SetVal(0, maxWorkerGaugeMetricID, d.name)
 				d.logger.LogDebug("setting max workers to zero")
 				d.maxUsedWorkers = 0
 			case numWorkers := <-d.workerTracker:
@@ -184,8 +183,8 @@ func NewDispatcher(dispatcherName string, options ...Option) *Dispatcher {
 		name:                dispatcherName,
 		maxWorkers:          10,
 		newWorker:           newWorker,
-		workerTracker:       make(chan int, 10),
-		resetMaxWorkerCount: make(chan bool),
+		workerTracker:       make(chan int, 100),
+		resetMaxWorkerCount: make(chan bool, 10),
 	}
 
 	for _, option := range options {
