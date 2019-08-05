@@ -11,6 +11,11 @@ type updatePacket struct {
 	value      int64
 }
 
+type messageAdder struct {
+	name   string
+	metric IMetricVec
+}
+
 // RateLatencyLogger : Logger that tracks multiple messages & prints to console
 type RateLatencyLogger struct {
 	messages       map[string]IMetricVec // Map that holds all module's messages
@@ -18,6 +23,7 @@ type RateLatencyLogger struct {
 	countIncTunnel chan updatePacket
 	countSubTunnel chan updatePacket
 	countSetTunnel chan updatePacket
+	addMsgTunnel   chan messageAdder
 	logger         *CustomLogger
 	isRan          bool
 }
@@ -65,6 +71,11 @@ func (mgl *RateLatencyLogger) run() {
 	go func() {
 		for {
 			select {
+			case addMessage := <-mgl.addMsgTunnel:
+				_, ok := mgl.messages[addMessage.name]
+				if !ok {
+					mgl.messages[addMessage.name] = addMessage.metric
+				}
 			case packet := <-mgl.updateTunnel:
 				msg, ok := mgl.messages[packet.identifier]
 				if !ok {
@@ -101,10 +112,7 @@ func (mgl *RateLatencyLogger) run() {
 
 // AddNewMetric sets New message initialisation function
 func (mgl *RateLatencyLogger) AddNewMetric(messageIdentifier string, newMessage IMetricVec) {
-	_, ok := mgl.messages[messageIdentifier]
-	if !ok {
-		mgl.messages[messageIdentifier] = newMessage
-	}
+	mgl.addMsgTunnel <- messageAdder{name: messageIdentifier, metric: newMessage}
 }
 
 // RateLatencyOption sets a parameter for the RateLatencyLogger
@@ -131,6 +139,7 @@ func NewRateLatencyLogger(options ...RateLatencyOption) IMultiLogger {
 		countIncTunnel: make(chan updatePacket, 10000),
 		countSubTunnel: make(chan updatePacket, 10000),
 		countSetTunnel: make(chan updatePacket, 10000),
+		addMsgTunnel:   make(chan messageAdder, 10),
 		logger:         nil,
 	}
 
