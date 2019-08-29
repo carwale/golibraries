@@ -80,6 +80,7 @@ func (pool *Pool) addNewConnection(server string) {
 	conn, err := pool.connectionProvider.NewConnection(server, uclogger)
 	if err != nil {
 		uclogger.LogError("could not establish rabbitmq connection", err)
+		go pool.addNewConnection(server) // retry establishing connection
 		return
 	}
 
