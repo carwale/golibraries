@@ -101,7 +101,11 @@ func (ca *ConsulAgent) GetValue(key string) []byte {
 
 // CreateKV creates a key value pair
 func (ca *ConsulAgent) CreateKV(key string, value interface{}) bool {
-	valueBytes, err := getBytes(value)
+	var err error
+	valueBytes, ok := value.([]byte)
+	if !ok {
+		valueBytes, err = getBytes(value)
+	}
 	if err != nil {
 		ca.logger.LogError("Could not create KV Pair as the value could not be converted to bytes for key "+key, err)
 		return false
