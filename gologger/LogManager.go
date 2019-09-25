@@ -134,6 +134,11 @@ func NewLogger(LoggerOptions ...Option) *CustomLogger {
 }
 
 // LogErrorInterface is used to send errors
+func (l *CustomLogger) GetLogLevel() LogLevels {
+	return l.logLevel
+}
+
+// LogErrorInterface is used to send errors
 func (l *CustomLogger) LogErrorInterface(v ...interface{}) {
 	l.logger.Output(2, fmt.Sprint(v...))
 }
@@ -225,6 +230,12 @@ func (l *CustomLogger) LogMessagef(message string, args ...interface{}) {
 func (l *CustomLogger) logMessage(message string, level LogLevels) {
 	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q}`,
 		level.String(), time.Now().String(), l.graylogFacility, message)
+}
+
+func (l *CustomLogger) LogMessageWithExtras(message string, level LogLevels, pairs []Pair) {
+	if l.logLevel <= level {
+		l.logMessageWithExtras(message, level, pairs)
+	}
 }
 
 func (l *CustomLogger) logMessageWithExtras(message string, level LogLevels, pairs []Pair) {
