@@ -233,7 +233,7 @@ func (l *CustomLogger) logMessage(message string, level LogLevels) {
 }
 
 func (l *CustomLogger) LogMessageWithExtras(message string, level LogLevels, pairs []Pair) {
-	if l.logLevel <= level {
+	if l.logLevel >= level {
 		l.logMessageWithExtras(message, level, pairs)
 	}
 }
