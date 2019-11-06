@@ -232,7 +232,7 @@ func (l *CustomLogger) logMessage(message string, level LogLevels) {
 		level.String(), time.Now().String(), l.graylogFacility, message)
 }
 
-func (l *CustomLogger) LogMessageWithExtras(message string, level LogLevels, pairs []Pair) {
+func (l *CustomLogger) LogMessageWithExtras(message string, level LogLevels, pairs ...Pair) {
 	if l.logLevel >= level {
 		l.logMessageWithExtras(message, level, pairs)
 	}
