@@ -3,65 +3,42 @@ module github.com/carwale/golibraries
 go 1.13
 
 require (
-	github.com/Shopify/sarama v1.17.0
+	github.com/Shopify/sarama v1.17.0 // indirect
+	github.com/Shopify/toxiproxy v2.1.4+incompatible // indirect
 	github.com/apache/thrift v0.0.0-20171203172758-327ebb6c2b6d
-	github.com/beorn7/perks v0.0.0-20180321164747-3a771d992973
-	github.com/davecgh/go-spew v1.1.1
-	github.com/eapache/go-resiliency v1.1.0
-	github.com/eapache/go-xerial-snappy v0.0.0-20160609142408-bb955e01b934
-	github.com/eapache/queue v1.1.0
-	github.com/fsnotify/fsnotify v1.4.7
-	github.com/ghodss/yaml v1.0.0
-	github.com/go-logfmt/logfmt v0.3.0
-	github.com/gogo/protobuf v1.2.2-0.20190723190241-65acae22fc9d
-	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b
-	github.com/golang/protobuf v1.3.1
-	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db
-	github.com/google/gofuzz v1.0.0
-	github.com/googleapis/gnostic v0.2.0
+	github.com/armon/go-metrics v0.3.1 // indirect
+	github.com/eapache/go-resiliency v1.1.0 // indirect
+	github.com/eapache/go-xerial-snappy v0.0.0-20160609142408-bb955e01b934 // indirect
+	github.com/eapache/queue v1.1.0 // indirect
+	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
+	github.com/googleapis/gnostic v0.2.0 // indirect
 	github.com/hashicorp/consul v1.0.7
-	github.com/hashicorp/go-cleanhttp v0.0.0-20171218145408-d5fe4b57a186
-	github.com/hashicorp/go-rootcerts v0.0.0-20160503143440-6bb64b370b90
-	github.com/hashicorp/hcl v0.0.0-20180404174102-ef8a98b0bbce
-	github.com/hashicorp/serf v0.8.1
-	github.com/howeyc/gopass v0.0.0-20170109162249-bf9dde6d0d2c
-	github.com/imdario/mergo v0.3.5
-	github.com/json-iterator/go v1.1.7
-	github.com/kr/logfmt v0.0.0-20140226030751-b84e30acd515
-	github.com/magiconair/properties v1.8.0
-	github.com/matttproud/golang_protobuf_extensions v1.0.1
-	github.com/mitchellh/go-homedir v0.0.0-20180523094522-3864e76763d9
-	github.com/mitchellh/mapstructure v0.0.0-20180511142126-bb74f1db0675
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd
-	github.com/modern-go/reflect2 v1.0.1
-	github.com/opentracing-contrib/go-observer v0.0.0-20170622124052-a52f23424492
+	github.com/hashicorp/go-msgpack v0.5.5 // indirect
+	github.com/hashicorp/go-rootcerts v0.0.0-20160503143440-6bb64b370b90 // indirect
+	github.com/hashicorp/go-uuid v1.0.2 // indirect
+	github.com/hashicorp/hcl v0.0.0-20180404174102-ef8a98b0bbce // indirect
+	github.com/hashicorp/memberlist v0.1.6 // indirect
+	github.com/hashicorp/serf v0.8.1 // indirect
+	github.com/magiconair/properties v1.8.0 // indirect
+	github.com/mitchellh/go-homedir v0.0.0-20180523094522-3864e76763d9 // indirect
+	github.com/mitchellh/go-testing-interface v1.0.0 // indirect
+	github.com/mitchellh/mapstructure v0.0.0-20180511142126-bb74f1db0675 // indirect
+	github.com/opentracing-contrib/go-observer v0.0.0-20170622124052-a52f23424492 // indirect
 	github.com/opentracing/opentracing-go v1.0.2
 	github.com/openzipkin/zipkin-go-opentracing v0.3.4
-	github.com/pelletier/go-toml v1.2.0
-	github.com/pierrec/lz4 v1.0.2-0.20171218195038-2fcda4cb7018
-	github.com/pierrec/xxHash v0.1.1
-	github.com/prometheus/client_golang v0.9.0
-	github.com/prometheus/client_model v0.0.0-20180712105110-5c3871d89910
-	github.com/prometheus/common v0.0.0-20181020173914-7e9e6cabbd39
-	github.com/prometheus/procfs v0.0.0-20181005140218-185b4288413d
-	github.com/rcrowley/go-metrics v0.0.0-20180503174638-e2704e165165
-	github.com/spf13/afero v1.2.2
-	github.com/spf13/cast v1.2.0
-	github.com/spf13/jwalterweatherman v0.0.0-20180109140146-7c0cea34c8ec
-	github.com/spf13/pflag v1.0.5
+	github.com/pelletier/go-toml v1.2.0 // indirect
+	github.com/pierrec/lz4 v1.0.2-0.20171218195038-2fcda4cb7018 // indirect
+	github.com/pierrec/xxHash v0.1.1 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
+	github.com/prometheus/client_golang v1.4.0
+	github.com/rcrowley/go-metrics v0.0.0-20180503174638-e2704e165165 // indirect
+	github.com/spf13/cast v1.2.0 // indirect
+	github.com/spf13/jwalterweatherman v0.0.0-20180109140146-7c0cea34c8ec // indirect
 	github.com/spf13/viper v1.0.2
 	github.com/streadway/amqp v0.0.0-20180528204448-e5adc2ada8b8
-	golang.org/x/crypto v0.0.0-20190820162420-60c769a6c586
 	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
-	golang.org/x/sys v0.0.0-20190813064441-fde4db37ae7a
-	golang.org/x/text v0.3.2
-	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
-	google.golang.org/genproto v0.0.0-20190418145605-e7d98fc518a7
 	google.golang.org/grpc v1.19.0
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20180326133423-4dbb9d721348
-	gopkg.in/inf.v0 v0.9.1
-	gopkg.in/yaml.v2 v2.2.4
-	k8s.io/api v0.16.6
 	k8s.io/apimachinery v0.16.7-beta.0
 	k8s.io/client-go v0.16.6
 )
