@@ -12,7 +12,7 @@ require (
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/golang/snappy v0.0.0-20180518054509-2e65f85255db // indirect
 	github.com/googleapis/gnostic v0.2.0 // indirect
-	github.com/hashicorp/consul v1.0.7
+	github.com/hashicorp/consul v1.7.0
 	github.com/hashicorp/go-msgpack v0.5.5 // indirect
 	github.com/hashicorp/go-rootcerts v0.0.0-20160503143440-6bb64b370b90 // indirect
 	github.com/hashicorp/go-uuid v1.0.2 // indirect
