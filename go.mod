@@ -40,5 +40,5 @@ require (
 	google.golang.org/grpc v1.19.0
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20180326133423-4dbb9d721348
 	k8s.io/apimachinery v0.16.7-beta.0
-	k8s.io/client-go v0.16.6
+	k8s.io/client-go v0.18.0
 )
