@@ -39,6 +39,6 @@ require (
 	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
 	google.golang.org/grpc v1.19.0
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20180326133423-4dbb9d721348
-	k8s.io/apimachinery v0.16.7-beta.0
+	k8s.io/apimachinery v0.19.0-alpha.1
 	k8s.io/client-go v0.16.6
 )
