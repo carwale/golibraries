@@ -37,7 +37,7 @@ require (
 	github.com/spf13/viper v1.0.2
 	github.com/streadway/amqp v0.0.0-20180528204448-e5adc2ada8b8
 	golang.org/x/net v0.0.0-20191004110552-13f9640d40b9
-	google.golang.org/grpc v1.19.0
+	google.golang.org/grpc v1.29.0
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20180326133423-4dbb9d721348
 	k8s.io/apimachinery v0.16.7-beta.0
 	k8s.io/client-go v0.16.6
