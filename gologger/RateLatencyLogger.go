@@ -135,10 +135,10 @@ func NewRateLatencyLogger(options ...RateLatencyOption) IMultiLogger {
 	}
 	rateLatencyLogger = &RateLatencyLogger{
 		messages:       map[string]IMetricVec{},
-		updateTunnel:   make(chan updatePacket, 10000),
-		countIncTunnel: make(chan updatePacket, 10000),
-		countSubTunnel: make(chan updatePacket, 10000),
-		countSetTunnel: make(chan updatePacket, 10000),
+		updateTunnel:   make(chan updatePacket, 100000),
+		countIncTunnel: make(chan updatePacket, 100000),
+		countSubTunnel: make(chan updatePacket, 100000),
+		countSetTunnel: make(chan updatePacket, 100000),
 		addMsgTunnel:   make(chan messageAdder, 10),
 		logger:         nil,
 	}

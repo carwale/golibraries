@@ -103,22 +103,24 @@ func SetJobQueue(jobQueue chan IJob) Option {
 }
 
 const maxWorkerGaugeMetricID = "MAX-WORKERS"
+const currentQueueLengthGaugeMetricId = "DIPATCHER-QUEUE-LENGTH"
 
 // Dispatcher holds worker pool, job queue and manages workers and job
 // To submit a job to worker pool, use code
 // `dispatcher.JobQueue <- job`
 type Dispatcher struct {
-	name                  string
-	workerPool            chan chan IJob // A pool of workers channels that are registered with the dispatcher
-	maxWorkers            int
-	newWorker             func(chan chan IJob, int) IWorker
-	JobQueue              chan IJob
-	workerTracker         chan int
-	maxUsedWorkers        int
-	latencyLogger         gologger.IMultiLogger
-	resetMaxWorkerCount   chan bool
-	maxWorkersGaugeMetric *gologger.GaugeMetric
-	logger                *gologger.CustomLogger
+	name                          string
+	workerPool                    chan chan IJob // A pool of workers channels that are registered with the dispatcher
+	maxWorkers                    int
+	newWorker                     func(chan chan IJob, int) IWorker
+	JobQueue                      chan IJob
+	workerTracker                 chan int
+	maxUsedWorkers                int
+	latencyLogger                 gologger.IMultiLogger
+	resetMaxWorkerCount           chan bool
+	maxWorkersGaugeMetric         *gologger.GaugeMetric
+	currentQueueLengthGaugeMetric *gologger.GaugeMetric
+	logger                        *gologger.CustomLogger
 }
 
 func (d *Dispatcher) run() {
@@ -137,6 +139,7 @@ func (d *Dispatcher) dispatch() {
 	for {
 		select {
 		case job := <-d.JobQueue:
+			d.latencyLogger.IncVal(1, currentQueueLengthGaugeMetricId, d.name)
 			// try to obtain a worker job channel that is available.
 			// this will block until a worker is idle
 			jobChannel := <-d.workerPool
@@ -144,6 +147,7 @@ func (d *Dispatcher) dispatch() {
 			d.workerTracker <- d.maxWorkers - len(d.workerPool)
 			// dispatch the job to the worker job channel
 			jobChannel <- job
+			d.latencyLogger.SubVal(1, currentQueueLengthGaugeMetricId, d.name)
 		}
 	}
 }
@@ -183,7 +187,7 @@ func NewDispatcher(dispatcherName string, options ...Option) *Dispatcher {
 		name:                dispatcherName,
 		maxWorkers:          10,
 		newWorker:           newWorker,
-		workerTracker:       make(chan int, 100),
+		workerTracker:       make(chan int, 10000),
 		resetMaxWorkerCount: make(chan bool, 10),
 	}
 
@@ -208,6 +212,14 @@ func NewDispatcher(dispatcherName string, options ...Option) *Dispatcher {
 			[]string{"DispatcherName"},
 		), d.logger)
 		d.latencyLogger.AddNewMetric(maxWorkerGaugeMetricID, maxWorkerGaugeMetric)
+		currentQueueLengthGaugeMetric := gologger.NewGaugeMetric(prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "dispatcher_queue_length",
+				Help: "What is the current lenght of the queue of the dispatcher",
+			},
+			[]string{"DispatcherName"},
+		), d.logger)
+		d.latencyLogger.AddNewMetric(currentQueueLengthGaugeMetricId, currentQueueLengthGaugeMetric)
 	})
 	d.logger.LogDebug("New dispacther created")
 	d.workerPool = make(chan chan IJob, d.maxWorkers)
