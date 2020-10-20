@@ -4,7 +4,6 @@ go 1.13
 
 require (
 	github.com/armon/go-metrics v0.3.1 // indirect
-	github.com/googleapis/gnostic v0.2.0 // indirect
 	github.com/hashicorp/consul v1.0.7
 	github.com/hashicorp/go-msgpack v0.5.5 // indirect
 	github.com/hashicorp/go-rootcerts v0.0.0-20160503143440-6bb64b370b90 // indirect
@@ -23,8 +22,8 @@ require (
 	github.com/spf13/jwalterweatherman v0.0.0-20180109140146-7c0cea34c8ec // indirect
 	github.com/spf13/viper v1.0.2
 	github.com/streadway/amqp v0.0.0-20180528204448-e5adc2ada8b8
-	google.golang.org/grpc v1.19.0
+	google.golang.org/grpc v1.27.0
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20180326133423-4dbb9d721348
-	k8s.io/apimachinery v0.16.7-beta.0
+	k8s.io/apimachinery v0.20.0-alpha.3
 	k8s.io/client-go v0.16.6
 )
