@@ -62,7 +62,7 @@ func GraylogFacility(facility string) Option {
 
 // K8sNamespace sets the graylog k8sNamespace for the logger. Default is "dev"
 // This option will have no effect if env variable K8S_NAMESPACE is set
-func K8sNamespace(k8sNamespace string) Option {
+func SetK8sNamespace(k8sNamespace string) Option {
 	return func(l *CustomLogger) {
 		if k8sNamespace != "" {
 			l.k8sNamespace = k8sNamespace
