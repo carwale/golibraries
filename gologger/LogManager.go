@@ -17,6 +17,7 @@ type CustomLogger struct {
 	graylogHostName       string
 	graylogPort           int
 	graylogFacility       string
+	k8sNamespace          string
 	logLevel              LogLevels
 	isConsolePrintEnabled bool
 	isTimeLoggingEnabled  bool
@@ -55,6 +56,16 @@ func GraylogFacility(facility string) Option {
 	return func(l *CustomLogger) {
 		if facility != "" {
 			l.graylogFacility = facility
+		}
+	}
+}
+
+// K8sNamespace sets the graylog k8sNamespace for the logger. Default is "dev"
+// This option will have no effect if env variable K8S_NAMESPACE is set
+func SetK8sNamespace(k8sNamespace string) Option {
+	return func(l *CustomLogger) {
+		if k8sNamespace != "" {
+			l.k8sNamespace = k8sNamespace
 		}
 	}
 }
@@ -108,10 +119,16 @@ func NewLogger(LoggerOptions ...Option) *CustomLogger {
 		graylogPort:     11100,
 		graylogFacility: "ErrorLogger",
 		logLevel:        ERROR,
+		k8sNamespace:    "dev",
 	}
 
 	for _, option := range LoggerOptions {
 		option(l)
+	}
+
+	k8sNamespace, ok := os.LookupEnv("K8S_NAMESPACE")
+	if ok && k8sNamespace != "" {
+		l.k8sNamespace = k8sNamespace
 	}
 
 	graylogAddr := l.graylogHostName + ":" + strconv.Itoa(l.graylogPort)
@@ -133,7 +150,7 @@ func NewLogger(LoggerOptions ...Option) *CustomLogger {
 	return l
 }
 
-// LogErrorInterface is used to send errors
+// GetLogLevel is used to get the current Log level
 func (l *CustomLogger) GetLogLevel() LogLevels {
 	return l.logLevel
 }
@@ -145,8 +162,8 @@ func (l *CustomLogger) LogErrorInterface(v ...interface{}) {
 
 // LogError is used to send errors and a message along with the error
 func (l *CustomLogger) LogError(str string, err error) {
-	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q,"log_error": %q}`,
-		ERROR.String(), time.Now().String(), l.graylogFacility, str, err.Error())
+	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q,"log_error": %q,"K8sNamespace": %q}`,
+		ERROR.String(), time.Now().String(), l.graylogFacility, str, err.Error(), l.k8sNamespace)
 }
 
 // LogErrorWithoutError is used to send only a message and not an error
@@ -228,8 +245,8 @@ func (l *CustomLogger) LogMessagef(message string, args ...interface{}) {
 }
 
 func (l *CustomLogger) logMessage(message string, level LogLevels) {
-	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q}`,
-		level.String(), time.Now().String(), l.graylogFacility, message)
+	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q,"k8sNamespace": %q}`,
+		level.String(), time.Now().String(), l.graylogFacility, message, l.k8sNamespace)
 }
 
 func (l *CustomLogger) LogMessageWithExtras(message string, level LogLevels, pairs ...Pair) {
@@ -243,6 +260,7 @@ func (l *CustomLogger) logMessageWithExtras(message string, level LogLevels, pai
 	pairs = append(pairs, Pair{"log_timestamp", time.Now().String()})
 	pairs = append(pairs, Pair{"log_facility", l.graylogFacility})
 	pairs = append(pairs, Pair{"log_message", message})
+	pairs = append(pairs, Pair{"k8sNamespace", l.k8sNamespace})
 	var buffer bytes.Buffer
 	buffer.WriteString("{")
 	for index, pair := range pairs {
@@ -271,7 +289,7 @@ func (l *CustomLogger) Tic(s string) (string, time.Time) {
 func (l *CustomLogger) Toc(message string, startTime time.Time) {
 	if l.isTimeLoggingEnabled {
 		endTime := time.Now()
-		l.logger.Printf(`{"log_timestamp": %q, "log_timetaken": %q, "log_facility": %q,"log_message": %q}`,
-			time.Now().String(), strconv.FormatInt(endTime.Sub(startTime).Nanoseconds(), 10), l.graylogFacility, message)
+		l.logger.Printf(`{"log_timestamp": %q, "log_timetaken": %q, "log_facility": %q,"log_message": %q,"k8sNamespace": %q}`,
+			time.Now().String(), strconv.FormatInt(endTime.Sub(startTime).Nanoseconds(), 10), l.graylogFacility, message, l.k8sNamespace)
 	}
 }
