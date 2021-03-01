@@ -245,7 +245,7 @@ func (l *CustomLogger) LogMessagef(message string, args ...interface{}) {
 }
 
 func (l *CustomLogger) logMessage(message string, level LogLevels) {
-	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q,"k8sNamespace": %q}`,
+	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q,"K8sNamespace": %q}`,
 		level.String(), time.Now().String(), l.graylogFacility, message, l.k8sNamespace)
 }
 
@@ -260,7 +260,7 @@ func (l *CustomLogger) logMessageWithExtras(message string, level LogLevels, pai
 	pairs = append(pairs, Pair{"log_timestamp", time.Now().String()})
 	pairs = append(pairs, Pair{"log_facility", l.graylogFacility})
 	pairs = append(pairs, Pair{"log_message", message})
-	pairs = append(pairs, Pair{"k8sNamespace", l.k8sNamespace})
+	pairs = append(pairs, Pair{"K8sNamespace", l.k8sNamespace})
 	var buffer bytes.Buffer
 	buffer.WriteString("{")
 	for index, pair := range pairs {
@@ -289,7 +289,7 @@ func (l *CustomLogger) Tic(s string) (string, time.Time) {
 func (l *CustomLogger) Toc(message string, startTime time.Time) {
 	if l.isTimeLoggingEnabled {
 		endTime := time.Now()
-		l.logger.Printf(`{"log_timestamp": %q, "log_timetaken": %q, "log_facility": %q,"log_message": %q,"k8sNamespace": %q}`,
+		l.logger.Printf(`{"log_timestamp": %q, "log_timetaken": %q, "log_facility": %q,"log_message": %q,"K8sNamespace": %q}`,
 			time.Now().String(), strconv.FormatInt(endTime.Sub(startTime).Nanoseconds(), 10), l.graylogFacility, message, l.k8sNamespace)
 	}
 }
