@@ -213,3 +213,27 @@ func (c *ConsulAgent) GetHealthyService(moduleName string) ([]string, error) {
 	}
 	return ipAddList, nil
 }
+
+//GetHealthyServiceWithZoneInfo will give all the IPs of the service and other info like zones
+func (c *ConsulAgent) GetHealthyServiceWithZoneInfo(moduleName string) ([]EndpointsWithExtraInfo, error) {
+	res, _, err := c.consulAgent.Health().Service(moduleName, "", true, nil)
+	if err != nil {
+		c.logger.LogError("Error getting healthy IP Addresses for module "+moduleName+" from consul", err)
+		return nil, err
+	}
+	ipAddList := make([]EndpointsWithExtraInfo, 0)
+	if len(res) == 0 {
+		err = errors.New("No healthy instance of module " + moduleName + " found")
+		c.logger.LogInfo("No instance found for module "+moduleName+" from consul")
+		return ipAddList, err
+	}
+	for _, val := range res {
+		address := val.Service.Address
+		port := val.Service.Port
+		ipAddList = append(ipAddList, EndpointsWithExtraInfo{
+			Address: address+":"+strconv.Itoa(port),
+			Zone: "",
+		})
+	}
+	return ipAddList, nil
+}

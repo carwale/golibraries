@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -103,6 +104,37 @@ func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
 			}
 			return instances, nil
 		}
+	}
+	return nil, fmt.Errorf("No instances found for %s", moduleName)
+}
+
+// GetHealthyServiceWithZoneInfo returns all endpoints of a service along with zone info
+func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]EndpointsWithExtraInfo, error) {
+
+	endpointSlicesList, err:= k.client.DiscoveryV1beta1().EndpointSlices(k.namespace).List(v1.ListOptions{LabelSelector: "kubernetes.io/service-name="+moduleName})
+	if err != nil {
+		return nil, err
+	}
+	if len(endpointSlicesList.Items) > 0 {
+		var instances []EndpointsWithExtraInfo
+		for _, endpointSlice := range endpointSlicesList.Items {
+
+			if len(endpointSlice.Ports) > 0 {
+				port := endpointSlice.Ports[0].Port
+
+				for _, endpoint := range endpointSlice.Endpoints {
+					if len(endpoint.Addresses) > 0 {
+						for _, address := range endpoint.Addresses {
+							instances = append(instances, EndpointsWithExtraInfo{
+								Address: address + ":" + strconv.Itoa(int(*port)),
+								Zone: endpoint.Topology["topology.kubernetes.io/zone"],
+							})
+						}
+					}
+				}
+			}
+		}
+		return instances, nil
 	}
 	return nil, fmt.Errorf("No instances found for %s", moduleName)
 }
