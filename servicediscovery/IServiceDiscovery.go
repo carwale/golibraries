@@ -3,6 +3,7 @@ package servicediscovery
 //IServiceDiscoveryAgent is the interface that every service discovery agent
 //should implement
 
+//EndpointsWithExtraInfo is an object that holds addresses and zone info
 type EndpointsWithExtraInfo struct {
 	Address string
 	Zone    string
