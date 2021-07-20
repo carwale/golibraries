@@ -16,16 +16,19 @@ var (
 	globalserviceName			string
 )
 
-// type Logger struct {
-// 	monitoring
-// }
+type LokiLogger struct {
+	monitoringKey	string
+	consulIP string
+	logger *gologger.CustomLogger
+	serviceName string
+}
 
-// func (*Logger) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
-// 	fmt.Println("The logger middleware is executing!")
-// 	next.ServeHTTP(w, r)
+func (l *LokiLogger) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+	fmt.Println("The logger middleware is executing!")
+	next.ServeHTTP(w, r)
 
-// 	go CheckLokiLogStatus("")
-// }
+	initConfig(l.monitoringKey, l.consulIP, l.logger, l.serviceName)
+}
 
 func initConfig(key string, consulIP string, logger *gologger.CustomLogger, serviceName string) {
 	globalConsulAgent = objConsulAgent.NewConsulAgent(
