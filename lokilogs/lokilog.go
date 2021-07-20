@@ -27,10 +27,10 @@ func (l *LokiLogger) ServeHTTP(w http.ResponseWriter, r *http.Request, next http
 	fmt.Println("The logger middleware is executing!")
 	next.ServeHTTP(w, r)
 
-	initConfig(l.monitoringKey, l.consulIP, l.logger, l.serviceName)
+	InitConfig(l.monitoringKey, l.consulIP, l.logger, l.serviceName)
 }
 
-func initConfig(key string, consulIP string, logger *gologger.CustomLogger, serviceName string) {
+func InitConfig(key string, consulIP string, logger *gologger.CustomLogger, serviceName string) {
 	globalConsulAgent = objConsulAgent.NewConsulAgent(
 		objConsulAgent.ConsulHost(consulIP),
 		objConsulAgent.Logger(logger),
