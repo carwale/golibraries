@@ -30,6 +30,7 @@ func (l *LokiLogger) ServeHTTP(w http.ResponseWriter, r *http.Request, next http
 	SetBasicConfig(l.monitoringKey, l.consulIP, l.logger, l.serviceName)
 }
 
+// SetBasicConfig start point of the request
 func SetBasicConfig(key string, consulIP string, logger *gologger.CustomLogger, serviceName string) {
 	globalConsulAgent = objConsulAgent.NewConsulAgent(
 		objConsulAgent.ConsulHost(consulIP),
