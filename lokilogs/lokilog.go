@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
-	"github.com/carwale/golibraries/gologger"
+
 	objConsulAgent "github.com/carwale/golibraries/consulagent"
+	"github.com/carwale/golibraries/gologger"
 )
 
 var (
@@ -46,7 +46,6 @@ func SetBasicConfig(key string, consulIP string, logger *gologger.CustomLogger, 
 
 func checkLokiLogStatus(key string) {
 	for {
-		fmt.Println("Value of isLokiLogEnabled" + strconv.FormatBool(isLokiLogEnabled))
 		time.Sleep(10 * time.Second)
 
 		// Monitoring key considered here
