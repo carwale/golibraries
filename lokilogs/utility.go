@@ -5,11 +5,11 @@ import (
 	"net/http"
 )
 
-func GetValueFromConsulByKey(key string) string {
+func getValueFromConsulByKey(key string) string {
 	return string(globalConsulAgent.GetValue(key))
 }
 
-func GetAbsoluteUrl(r *http.Request) string {
+func getAbsoluteUrl(r *http.Request) string {
 	return r.Host + r.RequestURI
 }
 
