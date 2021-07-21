@@ -6,15 +6,15 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-	objConsulAgent "github.com/carwale/golibraries/consulagent"
 	"github.com/carwale/golibraries/gologger"
+	objConsulAgent "github.com/carwale/golibraries/consulagent"
 )
 
 var (
-	globalConsulAgent 	*objConsulAgent.ConsulAgent
-	isLokiLogEnabled 	bool
-	serviceLogger 		*gologger.CustomLogger
-	globalserviceName			string
+	globalConsulAgent *objConsulAgent.ConsulAgent
+	isLokiLogEnabled  bool
+	serviceLogger     *gologger.CustomLogger
+	globalserviceName string
 )
 
 // type LokiLogger struct {
@@ -45,22 +45,24 @@ func SetBasicConfig(key string, consulIP string, logger *gologger.CustomLogger, 
 }
 
 func checkLokiLogStatus(key string) {
-	fmt.Println("Value of isLokiLogEnabled"+strconv.FormatBool(isLokiLogEnabled))
-	time.Sleep(10 * time.Second)
-	
-	// Monitoring key considered here
-	bhriguLogger := getValueFromConsulByKey(key)
-	loggerTime, err := time.Parse("01/02/2006 15:04:05", bhriguLogger)
-	
-	if err != nil {
-		isLokiLogEnabled = false
-	}
+	for {
+		fmt.Println("Value of isLokiLogEnabled" + strconv.FormatBool(isLokiLogEnabled))
+		time.Sleep(10 * time.Second)
 
-	if loggerTime.Before(time.Now()) {
-		isLokiLogEnabled = false
-	}
+		// Monitoring key considered here
+		bhriguLogger := getValueFromConsulByKey(key)
+		loggerTime, err := time.Parse("01/02/2006 15:04:05", bhriguLogger)
 
-	isLokiLogEnabled = true
+		if err != nil {
+			isLokiLogEnabled = false
+		}
+
+		if loggerTime.Before(time.Now()) {
+			isLokiLogEnabled = false
+		}
+
+		isLokiLogEnabled = true
+	}
 }
 
 // LogLokiLogs display the log based on isLokiLogEnabled flag
@@ -68,8 +70,8 @@ func LogLokiLogs(r *http.Request, statusCode int) {
 	if !isLokiLogEnabled {
 		return
 	}
-	
-	lokiLog := []gologger.Pair {
+
+	lokiLog := []gologger.Pair{
 		{Key: "time_iso8601", Value: time.Now().Format(time.RFC3339)},
 		{Key: "proxyUpstreamName", Value: globalserviceName},
 		{Key: "upstreamStatus", Value: fmt.Sprintf("%d", statusCode)},
