@@ -17,21 +17,6 @@ var (
 	globalserviceName string
 )
 
-// type LokiLogger struct {
-// 	monitoringKey	string
-// 	consulIP string
-// 	logger *gologger.CustomLogger
-// 	serviceName string
-// }
-
-// TODO: remove this function if not required
-// func (l *LokiLogger) ServeHTTP(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
-// 	fmt.Println("The logger middleware is executing!")
-// 	next.ServeHTTP(w, r)
-
-// 	SetBasicConfig(l.monitoringKey, l.consulIP, l.logger, l.serviceName)
-// }
-
 // SetBasicConfig start point of the request
 func SetBasicConfig(key string, consulIP string, logger *gologger.CustomLogger, serviceName string) {
 	globalConsulAgent = objConsulAgent.NewConsulAgent(
