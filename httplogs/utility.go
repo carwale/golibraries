@@ -1,4 +1,4 @@
-package lokilogs
+package httplogs
 
 import (
 	"net"
