@@ -57,8 +57,8 @@ func checkHTTPLogStatus(key string) {
 		time.Sleep(10 * time.Second)
 
 		// Monitoring key considered here
-		bhriguLogger := getValueFromConsulByKey(key)
-		loggerTime, err := time.Parse("01/02/2006 15:04:05", bhriguLogger)
+		monitoringLoggerTime := getValueFromConsulByKey(key)
+		loggerTime, err := time.Parse("01/02/2006 15:04:05", monitoringLoggerTime)
 
 		if err != nil {
 			isMonitoringLogEnabled = false
@@ -99,9 +99,10 @@ func LogHTTPLogs(r *http.Request, statusCode int) {
 	var buffer bytes.Buffer
 	buffer.WriteString("{")
 	for index, pair := range httpLog {
-		buffer.WriteString(fmt.Sprintf("%q:%q", pair.Key, pair.Value))
-		if index < len(httpLog)-1 {
-			buffer.WriteString(",")
+		if index == 0 {
+			buffer.WriteString(fmt.Sprintf("%q:%q", pair.Key, pair.Value))
+		} else {
+			buffer.WriteString(fmt.Sprintf(",%q:%q", pair.Key, pair.Value))
 		}
 	}
 	buffer.WriteString("}")
