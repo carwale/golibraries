@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	// "strconv"
+	"strconv"
 	"time"
 
 	objConsulAgent "github.com/carwale/golibraries/consulagent"
@@ -60,6 +60,7 @@ func setBasicConfig(key string, consulIP string, logger *gologger.CustomLogger, 
 func checkHTTPLogStatus(key string) {
 	for {
 		// fmt.Println("**************isMonitoringLogEnabled:" + strconv.FormatBool(isMonitoringLogEnabled))
+		serviceLogger.LogDebug("The value of access log for "+ globalserviceName +" is:" + strconv.FormatBool(isMonitoringLogEnabled))
 		time.Sleep(10 * time.Second)
 
 		// Monitoring key considered here

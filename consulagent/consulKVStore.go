@@ -97,10 +97,6 @@ func (ca *ConsulAgent) GetValue(key string) []byte {
 		ca.logger.LogError("Error getting value for key "+key, err)
 		return nil
 	}
-	if err != nil {
-		ca.logger.LogError("Error getting value for key "+key, err)
-		return nil
-	}
 	return pair.Value
 }
 
