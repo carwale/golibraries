@@ -14,21 +14,20 @@ import (
 
 var _gLogConfig *GlobalParameters
 
-// GlobalParameters ssss
+// GlobalParameters is the class used to store global variables
 type GlobalParameters struct {
-	globalConsulAgent      *objConsulAgent.ConsulAgent
-	isMonitoringLogEnabled bool
+	consulAgent            *objConsulAgent.ConsulAgent
 	serviceLogger          *gologger.CustomLogger
-	globalserviceName      string
+	serviceName            string
 	consulIP               string
+	isMonitoringLogEnabled bool
 }
 
-// Options sets a parameter for the lb
+// Options sets a variable of GlobalParameters
 type Options func(lb *GlobalParameters)
 
 // HTTPAccessLoggingWrapper is wrapper to neable access logs
 func HTTPAccessLoggingWrapper(h http.Handler) http.Handler {
-	// fmt.Println("httplogs.HTTPAccessLoggingWrapper called")
 	loggingFn := func(w http.ResponseWriter, r *http.Request) {
 		lrw := httploggingResponseWriter{
 			ResponseWriter: w,
@@ -47,7 +46,6 @@ func HTTPAccessLoggingWrapper(h http.Handler) http.Handler {
 // InitLogging acts as a constructor to initialize the logging service and
 // initailize the struct
 func InitLogging(serviceName string, options ...Options) {
-	// fmt.Println("httplogs.Constructor called")
 	_gLogConfig = setDefaultConfig(serviceName)
 	for _, option := range options {
 		option(_gLogConfig)
@@ -55,41 +53,40 @@ func InitLogging(serviceName string, options ...Options) {
 	setBasicConfig(serviceName)
 }
 
-// SetLogger sssss
+// SetLogger (mandatory) parameter in order to configure logger
 func SetLogger(customLogger *gologger.CustomLogger) Options {
 	return func(lb *GlobalParameters) { lb.serviceLogger = customLogger }
 }
 
-// SetConsulIP ssss
+// SetConsulIP (mandatory) default value is localhost, thus service has to change the
+// consul ip based on environment
 func SetConsulIP(consultIP string) Options {
 	return func(al *GlobalParameters) { al.consulIP = consultIP }
 }
 
 func setDefaultConfig(serviceName string) *GlobalParameters {
 	return &GlobalParameters{
-		consulIP:          "127.0.0.1:8500",
-		serviceLogger:     gologger.NewLogger(),
-		globalserviceName: serviceName,
+		consulIP:      "127.0.0.1:8500",
+		serviceLogger: gologger.NewLogger(),
+		serviceName:   serviceName,
 	}
 }
 
 // SetBasicConfig start point of the request
 func setBasicConfig(serviceName string) {
-	// fmt.Println("httplogs.setBasicConfig called")
-	_gLogConfig.globalConsulAgent = objConsulAgent.NewConsulAgent(
+	_gLogConfig.consulAgent = objConsulAgent.NewConsulAgent(
 		objConsulAgent.ConsulHost(_gLogConfig.consulIP),
 		objConsulAgent.Logger(_gLogConfig.serviceLogger),
 	)
 
 	monitoringKey := getMonitoringKey(serviceName)
-
 	go checkHTTPLogStatus(monitoringKey)
 }
 
+// infinite loop checking the key 'access_logs'
 func checkHTTPLogStatus(key string) {
 	for {
-		// fmt.Println("**************isMonitoringLogEnabled:" + strconv.FormatBool(isMonitoringLogEnabled))
-		_gLogConfig.serviceLogger.LogDebug("The value of access log for " + _gLogConfig.globalserviceName + " is:" + strconv.FormatBool(_gLogConfig.isMonitoringLogEnabled))
+		_gLogConfig.serviceLogger.LogDebug("The value of access log for " + _gLogConfig.serviceName + " is:" + strconv.FormatBool(_gLogConfig.isMonitoringLogEnabled))
 		time.Sleep(10 * time.Second)
 
 		// Monitoring key considered here
@@ -121,7 +118,7 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 
 	httpLog := []gologger.Pair{
 		{Key: "time_iso8601", Value: time.Now().Format(time.RFC3339)},
-		{Key: "proxyUpstreamName", Value: _gLogConfig.globalserviceName},
+		{Key: "proxyUpstreamName", Value: _gLogConfig.serviceName},
 		{Key: "upstreamStatus", Value: fmt.Sprintf("%d", statusCode)},
 		{Key: "upstream", Value: getIP(r)},
 		{Key: "request_method", Value: r.Method},
