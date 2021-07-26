@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"net/http"
+
 	// "strconv"
 	"time"
 
@@ -18,29 +19,34 @@ var (
 	globalserviceName      string
 )
 
-type BhriguResponseHeader struct {
-	superHandler http.Handler
+// HTTPAccessLoggingWrapper is wrapper to neable access logs
+func HTTPAccessLoggingWrapper(h http.Handler) http.Handler {
+	// fmt.Println("httplogs.HTTPAccessLoggingWrapper called")
+	loggingFn := func(w http.ResponseWriter, r *http.Request) {
+		lrw := httploggingResponseWriter{
+			ResponseWriter: w,
+			rData: &responseData{
+				status: 0,
+				size:   0,
+			},
+		}
+
+		h.ServeHTTP(&lrw, r) // inject our implementation of http.ResponseWriter
+		logHTTPLogs(r, lrw.rData.status, lrw.rData.size)
+	}
+	return http.HandlerFunc(loggingFn)
 }
 
-// InitLoggingWrapper acts as a constructor to initialize the logging service and
+// InitLogging acts as a constructor to initialize the logging service and
 // initailize the struct
-func InitLoggingWrapper(handlerToWrap http.Handler, key string, consulIP string, logger *gologger.CustomLogger, serviceName string) *BhriguResponseHeader {
-	// fmt.Println("httplog.Constructor called")
+func InitLogging(key string, consulIP string, logger *gologger.CustomLogger, serviceName string) {
+	// fmt.Println("httplogs.Constructor called")
 	setBasicConfig(key, consulIP, logger, serviceName)
-	return &BhriguResponseHeader{handlerToWrap}
-}
-
-//ServeHTTP acts as middleware and can be used to do pre/post processing
-func (rh *BhriguResponseHeader) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// fmt.Println("httplog.ServeHTTP called")
-
-	//call the wrapped handler
-	rh.superHandler.ServeHTTP(w, r)
 }
 
 // SetBasicConfig start point of the request
 func setBasicConfig(key string, consulIP string, logger *gologger.CustomLogger, serviceName string) {
-	// fmt.Println("httplog.setBasicConfig called")
+	// fmt.Println("httplogs.setBasicConfig called")
 	globalConsulAgent = objConsulAgent.NewConsulAgent(
 		objConsulAgent.ConsulHost(consulIP),
 		objConsulAgent.Logger(logger),
@@ -58,22 +64,27 @@ func checkHTTPLogStatus(key string) {
 
 		// Monitoring key considered here
 		monitoringLoggerTime := getValueFromConsulByKey(key)
-		loggerTime, err := time.Parse("01/02/2006 15:04:05", monitoringLoggerTime)
+		if monitoringLoggerTime == "" {
+			isMonitoringLogEnabled = false
+			continue
+		}
 
+		loggerTime, err := time.Parse("01/02/2006 15:04:05", monitoringLoggerTime)
 		if err != nil {
 			isMonitoringLogEnabled = false
+			continue
 		}
 
 		if loggerTime.Before(time.Now()) {
 			isMonitoringLogEnabled = false
+			continue
 		}
 
 		isMonitoringLogEnabled = true
 	}
 }
 
-// LogHTTPLogs display the log based on isMonitoringLogEnabled flag
-func LogHTTPLogs(r *http.Request, statusCode int) {
+func logHTTPLogs(r *http.Request, statusCode int, size int) {
 	if !isMonitoringLogEnabled {
 		return
 	}
@@ -86,7 +97,7 @@ func LogHTTPLogs(r *http.Request, statusCode int) {
 		{Key: "request_method", Value: r.Method},
 		{Key: "request_uri", Value: getAbsoluteUrl(r)},
 		{Key: "status", Value: fmt.Sprintf("%d", statusCode)},
-		// {Key: "request_length", Value: fmt.Sprintf("%d", r.ContentLength)},
+		{Key: "request_length", Value: fmt.Sprintf("%d", size)},
 		// {Key: "bytes_sent", Value: r.Header.Get("Content-Length")},
 		{Key: "http_user_agent", Value: r.UserAgent()},
 		{Key: "remote_addr", Value: r.RemoteAddr},
