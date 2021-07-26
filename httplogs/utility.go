@@ -6,7 +6,7 @@ import (
 )
 
 func getValueFromConsulByKey(key string) string {
-	return string(_gLogConfig.globalConsulAgent.GetValue(key))
+	return string(_gLogConfig.consulAgent.GetValue(key))
 }
 
 func getAbsoluteURL(r *http.Request) string {
@@ -25,6 +25,7 @@ func getIP(r *http.Request) string {
 	return ip
 }
 
+// The key used for log generation should be 'access_logs' for respective service
 func getMonitoringKey(serviceName string) string {
 	return "Monitoring/" + serviceName + "/access_logs"
 }
