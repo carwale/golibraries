@@ -6,10 +6,10 @@ import (
 )
 
 func getValueFromConsulByKey(key string) string {
-	return string(globalConsulAgent.GetValue(key))
+	return string(_gLogConfig.globalConsulAgent.GetValue(key))
 }
 
-func getAbsoluteUrl(r *http.Request) string {
+func getAbsoluteURL(r *http.Request) string {
 	return r.Host + r.RequestURI
 }
 
@@ -23,4 +23,8 @@ func getIP(r *http.Request) string {
 	}
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 	return ip
+}
+
+func getMonitoringKey(serviceName string) string {
+	return "Monitoring/" + serviceName + "/access_logs"
 }
