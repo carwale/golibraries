@@ -87,7 +87,7 @@ func setBasicConfig(serviceName string) {
 func checkHTTPLogStatus(key string) {
 	for {
 		_gLogConfig.serviceLogger.LogDebug("The value of access log for " + _gLogConfig.serviceName + " is:" + strconv.FormatBool(_gLogConfig.isMonitoringLogEnabled))
-		time.Sleep(10 * time.Second)
+		time.Sleep(5 * time.Minute)
 
 		// Monitoring key considered here
 		monitoringLoggerTime := getValueFromConsulByKey(key)
