@@ -127,13 +127,13 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		{Key: "request_uri", Value: getAbsoluteURL(r)},
 		{Key: "status", Value: fmt.Sprintf("%d", statusCode)},
 		{Key: "request_length", Value: fmt.Sprintf("%d", size)},
-		// {Key: "bytes_sent", Value: r.Header.Get("Content-Length")},
+		// TODO: add bytes_sent
 		{Key: "http_user_agent", Value: r.UserAgent()},
 		{Key: "remote_addr", Value: r.RemoteAddr},
 		{Key: "http_referer", Value: r.Referer()},
-		// {Key: "upstream_response_time", Value: "UNKNOWN"},
+		// TODO: add upstream_response_time
 		{Key: "server_protocol", Value: r.Proto},
-		// {Key: "requestuid", Value: "UNKNOWN"},
+		// TODO: add requestuid
 	}
 
 	var buffer bytes.Buffer
