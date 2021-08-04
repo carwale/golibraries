@@ -93,12 +93,12 @@ func (ca *ConsulAgent) GetKeyValuePairs(prefix string) map[string][]byte {
 // GetValue gets the value of the key
 func (ca *ConsulAgent) GetValue(key string) []byte {
 	pair, _, err := ca.consulAgent.KV().Get(key, nil)
-	if pair == nil {
+	if err != nil {
+		ca.logger.LogError("Error getting value for key "+key, err)
 		return nil
 	}
 	
-	if err != nil {
-		ca.logger.LogError("Error getting value for key "+key, err)
+	if pair == nil {
 		return nil
 	}
 	return pair.Value

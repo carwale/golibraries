@@ -26,7 +26,7 @@ type GlobalParameters struct {
 // Options sets a variable of GlobalParameters
 type Options func(lb *GlobalParameters)
 
-// HTTPAccessLoggingWrapper is wrapper to neable access logs
+// HTTPAccessLoggingWrapper is wrapper to enable access logs
 func HTTPAccessLoggingWrapper(h http.Handler) http.Handler {
 	loggingFn := func(w http.ResponseWriter, r *http.Request) {
 		lrw := httploggingResponseWriter{
@@ -50,6 +50,9 @@ func InitLogging(serviceName string, options ...Options) {
 	for _, option := range options {
 		option(_gLogConfig)
 	}
+	if _gLogConfig.serviceLogger == nil {
+		SetLogger(gologger.NewLogger())
+	}
 	setBasicConfig(serviceName)
 }
 
@@ -67,7 +70,6 @@ func SetConsulIP(consultIP string) Options {
 func setDefaultConfig(serviceName string) *GlobalParameters {
 	return &GlobalParameters{
 		consulIP:      "127.0.0.1:8500",
-		serviceLogger: gologger.NewLogger(),
 		serviceName:   serviceName,
 	}
 }
