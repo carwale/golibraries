@@ -124,11 +124,13 @@ func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]Endpoint
 
 				for _, endpoint := range endpointSlice.Endpoints {
 					if len(endpoint.Addresses) > 0 {
-						for _, address := range endpoint.Addresses {
-							instances = append(instances, EndpointsWithExtraInfo{
-								Address: address + ":" + strconv.Itoa(int(*port)),
-								Zone: endpoint.Topology["topology.kubernetes.io/zone"],
-							})
+						if endpoint.Conditions.Ready != nil  && *endpoint.Conditions.Ready {
+							for _, address := range endpoint.Addresses {
+								instances = append(instances, EndpointsWithExtraInfo{
+									Address: address + ":" + strconv.Itoa(int(*port)),
+									Zone: endpoint.Topology["topology.kubernetes.io/zone"],
+								})
+							}
 						}
 					}
 				}
