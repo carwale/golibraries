@@ -69,8 +69,8 @@ func SetConsulIP(consultIP string) Options {
 
 func setDefaultConfig(serviceName string) *GlobalParameters {
 	return &GlobalParameters{
-		consulIP:      "127.0.0.1:8500",
-		serviceName:   serviceName,
+		consulIP:    "127.0.0.1:8500",
+		serviceName: serviceName,
 	}
 }
 
@@ -118,7 +118,8 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		return
 	}
 
-	httpLog := []gologger.Pair{
+	// amznTraceID := r.Header.Get("X-Amzn-Trace-Id")
+	httpLog := []gologger.Pair {
 		{Key: "time_iso8601", Value: time.Now().Format(time.RFC3339)},
 		{Key: "proxyUpstreamName", Value: _gLogConfig.serviceName},
 		{Key: "upstreamStatus", Value: fmt.Sprintf("%d", statusCode)},
@@ -133,7 +134,8 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		{Key: "http_referer", Value: r.Referer()},
 		// TODO: add upstream_response_time
 		{Key: "server_protocol", Value: r.Proto},
-		// TODO: add requestuid
+		{Key: "requestuid", Value: getTraceRootID("Self=1-67891234-12456789abcdef012345678;Root=1-67891233-abcdef012345678912345678")},
+		// {Key: "requestuid", Value: getTraceRootID(amznTraceID)},
 	}
 
 	var buffer bytes.Buffer

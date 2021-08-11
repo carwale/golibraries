@@ -3,9 +3,11 @@ package httplogs
 import (
 	"net"
 	"net/http"
+	"github.com/google/uuid"
+	"strings"
 )
 
-func getValueFromConsulByKey(key string) string {
+func getValueFromConsulByKey(key string) string {	
 	return string(_gLogConfig.consulAgent.GetValue(key))
 }
 
@@ -28,4 +30,19 @@ func getIP(r *http.Request) string {
 // The key used for log generation should be 'access_logs' for respective service
 func getMonitoringKey(serviceName string) string {
 	return "Monitoring/" + serviceName + "/access_logs"
+}
+
+func getTraceRootID(trace string) string {
+	if trace == "" {
+		return uuid.New().String()
+	}
+
+	var strList = strings.Split(trace, ";")
+	for _,str := range strList {
+		if strings.HasPrefix(str, "Root") {
+			return strings.Split(str, "=")[1];
+		}
+	}
+
+	return uuid.New().String()
 }
