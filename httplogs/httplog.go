@@ -119,7 +119,7 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 	}
 
 	amznTraceID := r.Header.Get("X-Amzn-Trace-Id")
-	_gLogConfig.serviceLogger.LogMessage(amznTraceID + ".........................")
+	_gLogConfig.serviceLogger.LogDebug("lolx:"+ amznTraceID + ".........................")
 	httpLog := []gologger.Pair {
 		{Key: "time_iso8601", Value: time.Now().Format(time.RFC3339)},
 		{Key: "proxyUpstreamName", Value: _gLogConfig.serviceName},
@@ -135,8 +135,8 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		{Key: "http_referer", Value: r.Referer()},
 		// TODO: add upstream_response_time
 		{Key: "server_protocol", Value: r.Proto},
-		{Key: "requestuid", Value: getTraceRootID(amznTraceID)},
-		// {Key: "requestuid", Value: getTraceRootID("Self=1-67891234-12456789abcdef012345678;Root=1-67891233-abcdef012345678912345678")},
+		// {Key: "requestuid", Value: getTraceRootID(amznTraceID)},
+		{Key: "requestuid", Value: getTraceRootID("Self=1-67891234-12456789abcdef012345678;Root=1-67891233-abcdef012345678912345678")},
 	}
 
 	var buffer bytes.Buffer
