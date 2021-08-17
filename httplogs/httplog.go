@@ -118,9 +118,20 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		return
 	}
 
-	amznTraceID := r.Header.Get("X-Amzn-Trace-Id")
-	_gLogConfig.serviceLogger.LogMessage("amznTraceID for httplogs:"+ amznTraceID)
-	httpLog := []gologger.Pair {
+	// amznTraceID := r.Header.Get("X-Amzn-Trace-Id")
+	// _gLogConfig.serviceLogger.LogMessage("amznTraceID for httplogs:" + amznTraceID)
+	var buffer2 bytes.Buffer
+	buffer2.WriteString("{\n")
+	for name, values := range r.Header {
+		// Loop over all values for the name.
+		for _, value := range values {
+			buffer2.WriteString("***************" + name + ":" + value + "\n")
+		}
+	}
+	buffer2.WriteString("}")
+	_gLogConfig.serviceLogger.LogMessage(buffer2.String())
+
+	httpLog := []gologger.Pair{
 		{Key: "time_iso8601", Value: time.Now().Format(time.RFC3339)},
 		{Key: "proxyUpstreamName", Value: _gLogConfig.serviceName},
 		{Key: "upstreamStatus", Value: fmt.Sprintf("%d", statusCode)},
