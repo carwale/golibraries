@@ -89,7 +89,7 @@ func setBasicConfig(serviceName string) {
 func checkHTTPLogStatus(key string) {
 	for {
 		_gLogConfig.serviceLogger.LogDebug("The value of access log for " + _gLogConfig.serviceName + " is:" + strconv.FormatBool(_gLogConfig.isMonitoringLogEnabled))
-		time.Sleep(5 * time.Second)
+		time.Sleep(5 * time.Minute)
 
 		// Monitoring key considered here
 		monitoringLoggerTime := getValueFromConsulByKey(key)
@@ -119,7 +119,7 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 	}
 
 	amznTraceID := r.Header.Get("X-Amzn-Trace-Id")
-	_gLogConfig.serviceLogger.LogDebug("lolx:"+ amznTraceID + ".........................")
+	_gLogConfig.serviceLogger.LogDebug("amznTraceID for httplogs:"+ amznTraceID)
 	httpLog := []gologger.Pair {
 		{Key: "time_iso8601", Value: time.Now().Format(time.RFC3339)},
 		{Key: "proxyUpstreamName", Value: _gLogConfig.serviceName},

@@ -1,7 +1,6 @@
 package httplogs
 
 import (
-	// "fmt"
 	"net/http"
 )
 
