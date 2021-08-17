@@ -118,10 +118,10 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		return
 	}
 
-	// amznTraceID := r.Header.Get("X-Amzn-Trace-Id")
-	// _gLogConfig.serviceLogger.LogMessage("amznTraceID for httplogs:" + amznTraceID)
+	amznTraceID := r.Header.Get("X-Amzn-Trace-Id")
+
 	var buffer2 bytes.Buffer
-	buffer2.WriteString("{\n")
+	buffer2.WriteString("{ amznTraceID for httplogs:" + amznTraceID + "\n")
 	for name, values := range r.Header {
 		// Loop over all values for the name.
 		for _, value := range values {
@@ -146,8 +146,8 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		{Key: "http_referer", Value: r.Referer()},
 		// TODO: add upstream_response_time
 		{Key: "server_protocol", Value: r.Proto},
-		// {Key: "requestuid", Value: getTraceRootID(amznTraceID)},
-		{Key: "requestuid", Value: getTraceRootID("Self=1-67891234-12456789abcdef012345678;Root=1-67891233-abcdef012345678912345678")},
+		{Key: "requestuid", Value: getTraceRootID(amznTraceID)},
+		// {Key: "requestuid", Value: getTraceRootID("Self=1-67891234-12456789abcdef012345678;Root=1-67891233-abcdef012345678912345678")},
 	}
 
 	var buffer bytes.Buffer
