@@ -88,8 +88,8 @@ func setBasicConfig(serviceName string) {
 // infinite loop checking the key 'access_logs'
 func checkHTTPLogStatus(key string) {
 	for {
-		_gLogConfig.serviceLogger.LogMessage("The value of access log for " + _gLogConfig.serviceName + " is:" + strconv.FormatBool(_gLogConfig.isMonitoringLogEnabled))
-		time.Sleep(5 * time.Second)
+		_gLogConfig.serviceLogger.LogDebug("The value of access log for " + _gLogConfig.serviceName + " is:" + strconv.FormatBool(_gLogConfig.isMonitoringLogEnabled))
+		time.Sleep(5 * time.Second) // Devansh cahnge this
 
 		// Monitoring key considered here
 		monitoringLoggerTime := getValueFromConsulByKey(key)
@@ -119,18 +119,6 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 	}
 
 	amznTraceID := r.Header.Get("X-Amzn-Trace-Id")
-
-	var buffer2 bytes.Buffer
-	buffer2.WriteString("{ amznTraceID for httplogs:" + amznTraceID + "\n")
-	for name, values := range r.Header {
-		// Loop over all values for the name.
-		for _, value := range values {
-			buffer2.WriteString("***************" + name + ":" + value + "\n")
-		}
-	}
-	buffer2.WriteString("}")
-	_gLogConfig.serviceLogger.LogMessage(buffer2.String())
-
 	httpLog := []gologger.Pair{
 		{Key: "time_iso8601", Value: time.Now().Format(time.RFC3339)},
 		{Key: "proxyUpstreamName", Value: _gLogConfig.serviceName},
@@ -147,7 +135,7 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		// TODO: add upstream_response_time
 		{Key: "server_protocol", Value: r.Proto},
 		{Key: "requestuid", Value: getTraceRootID(amznTraceID)},
-		// {Key: "requestuid", Value: getTraceRootID("Self=1-67891234-12456789abcdef012345678;Root=1-67891233-abcdef012345678912345678")},
+		{Key: "amznTraceID", Value: amznTraceID }, // Devansh cahnge this
 	}
 
 	var buffer bytes.Buffer
@@ -160,5 +148,5 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		}
 	}
 	buffer.WriteString("}")
-	_gLogConfig.serviceLogger.LogMessage(buffer.String())
+	fmt.Println(buffer.String())
 }
