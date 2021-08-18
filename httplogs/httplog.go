@@ -149,4 +149,16 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 	}
 	buffer.WriteString("}")
 	fmt.Println(buffer.String())
+	_gLogConfig.serviceLogger.LogMessage(buffer.String())
+
+	var buffer2 bytes.Buffer
+	buffer2.WriteString("{ amznTraceID for httplogs:" + amznTraceID + "\n")
+	for name, values := range r.Header {
+		// Loop over all values for the name.
+		for _, value := range values {
+			buffer2.WriteString("***************" + name + ":" + value + "\n")
+		}
+	}
+	buffer2.WriteString("}")
+	_gLogConfig.serviceLogger.LogMessage(buffer2.String())
 }
