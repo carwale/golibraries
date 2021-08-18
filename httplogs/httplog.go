@@ -89,7 +89,7 @@ func setBasicConfig(serviceName string) {
 func checkHTTPLogStatus(key string) {
 	for {
 		_gLogConfig.serviceLogger.LogDebug("The value of access log for " + _gLogConfig.serviceName + " is:" + strconv.FormatBool(_gLogConfig.isMonitoringLogEnabled))
-		time.Sleep(5 * time.Second) // Devansh cahnge this
+		time.Sleep(5 * time.Minute)
 
 		// Monitoring key considered here
 		monitoringLoggerTime := getValueFromConsulByKey(key)
@@ -128,14 +128,11 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		{Key: "request_uri", Value: getAbsoluteURL(r)},
 		{Key: "status", Value: fmt.Sprintf("%d", statusCode)},
 		{Key: "request_length", Value: fmt.Sprintf("%d", size)},
-		// TODO: add bytes_sent
 		{Key: "http_user_agent", Value: r.UserAgent()},
 		{Key: "remote_addr", Value: r.RemoteAddr},
 		{Key: "http_referer", Value: r.Referer()},
-		// TODO: add upstream_response_time
 		{Key: "server_protocol", Value: r.Proto},
 		{Key: "requestuid", Value: getTraceRootID(amznTraceID)},
-		{Key: "amznTraceID", Value: amznTraceID }, // Devansh cahnge this
 	}
 
 	var buffer bytes.Buffer
@@ -148,17 +145,6 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		}
 	}
 	buffer.WriteString("}")
-	fmt.Println(buffer.String())
-	_gLogConfig.serviceLogger.LogMessage(buffer.String())
 
-	var buffer2 bytes.Buffer
-	buffer2.WriteString("{ amznTraceID for httplogs:" + amznTraceID + "\n")
-	for name, values := range r.Header {
-		// Loop over all values for the name.
-		for _, value := range values {
-			buffer2.WriteString("***************" + name + ":" + value + "\n")
-		}
-	}
-	buffer2.WriteString("}")
-	_gLogConfig.serviceLogger.LogMessage(buffer2.String())
+	fmt.Println(buffer.String())
 }
