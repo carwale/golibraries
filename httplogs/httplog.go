@@ -114,7 +114,7 @@ func checkHTTPLogStatus(key string) {
 }
 
 func logHTTPLogs(r *http.Request, statusCode int, size int) {
-	if !_gLogConfig.isMonitoringLogEnabled {
+	if !_gLogConfig.isMonitoringLogEnabled && statusCode < 400 {
 		return
 	}
 
