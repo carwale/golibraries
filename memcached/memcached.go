@@ -4,12 +4,13 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 )
 
+// CacheClient is used to add,update,remove items from memcache
 type CacheClient struct {
 	client *memcache.Client
 }
 
-// initCache returns a connected client server to cache to.
-// It returns the *memcache.Client object if successful, else returns (nil,err)
+// NewMemCachedClient returns a connected client server to cache to.
+// It returns the *CacheClient object if successful, else returns (nil,err)
 func NewMemCachedClient(serverList []string) (*CacheClient, error) {
 	memCacheClient := memcache.New(serverList...)
 	err := memCacheClient.Ping()
