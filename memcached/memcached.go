@@ -35,7 +35,7 @@ func saveItem(server *memcache.Client, item *memcache.Item) error {
 	return nil
 }
 
-// updateItem updates an Item in cache.
+// updateItem updates an Item in cache. If adds the item if the key doesn't exist
 // It returns error if it is unable to update the Item.
 func updateItem(server *memcache.Client, item *memcache.Item) error {
 	err := server.Replace(item)
