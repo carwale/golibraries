@@ -13,6 +13,7 @@ type CacheClient struct {
 	client *memcache.Client
 }
 
+// GetBytes converts interface{} to a byte array
 func GetBytes(key interface{}) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
@@ -27,6 +28,7 @@ func GetBytes(key interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// BytesToEmptyInterface converts byte array to interface{} object
 func BytesToEmptyInterface(data []byte) (interface{}, error) {
 	buf := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(buf)
