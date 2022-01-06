@@ -1,6 +1,7 @@
 package memcached
 
 import (
+	"encoding/gob"
 	"testing"
 )
 
@@ -44,6 +45,7 @@ func TestBytesInterfaceConversionStruct(t *testing.T) {
 		Age  int
 	}
 	testStruct := Person{Name: "Somil", Age: 23}
+	gob.Register(testStruct)
 	got, err := GetBytes(testStruct)
 	t.Logf("Bytes are %v", got)
 	if err != nil {

@@ -20,7 +20,6 @@ func GetBytes(key interface{}) ([]byte, error) {
 	if key == nil {
 		return nil, fmt.Errorf("input cannot be nil")
 	}
-	gob.Register(key)
 	err := enc.Encode(&key)
 	if err != nil {
 		return nil, err
@@ -41,6 +40,11 @@ func BytesToEmptyInterface(data []byte) (interface{}, error) {
 }
 
 // CreateMemCacheObject creates a *memcache.Item
+// It takes in key, value and expiration time.
+// expiration is the cache expiration time, in seconds: either a relative
+// time from now (up to 1 month), or an absolute Unix epoch time.
+// Zero means the Item has no expiration time.
+// It returns (nil, err) if there's any other error, else returns a *memcache.Item
 func CreateMemCacheObject(key string, value interface{}, expiration int32) (*memcache.Item, error) {
 	valueBytes, err := GetBytes(value)
 	if err != nil {
@@ -135,6 +139,24 @@ func (c *CacheClient) UpdateItem(key string, value interface{}, expiration int32
 // It returns false,error if delete was unsuccessful.
 func (c *CacheClient) DeleteItem(key string) (bool, error) {
 	err := c.client.Delete(key)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// DeleteWithDelay deletes a given key from the server after the delay mentioned.
+// It returns false, error if the operation was unsuccessful.
+// key is the memcache key to be deleted.
+// delay is the time after which the key should be deleted, in seconds: either a relative
+// time from now (up to 1 month), or an absolute Unix epoch time.
+func (c *CacheClient) DeleteWithDelay(key string, delay int32) (bool, error) {
+	item, err := c.client.Get(key)
+	if err != nil {
+		return false, err
+	}
+	newItem := &memcache.Item{Key: item.Key, Value: item.Value, Expiration: delay}
+	err = c.client.Replace(newItem)
 	if err != nil {
 		return false, err
 	}
