@@ -145,12 +145,11 @@ func (c *CacheClient) DeleteWithoutDelay(key string) (bool, error) {
 	return true, nil
 }
 
-// DeleteItem deletes a given key from the server after the delay mentioned.
+// DeleteItem deletes a given key from the server after a 5 mins delay.
 // It returns false, error if the operation was unsuccessful.
 // key is the memcache key to be deleted.
-// delay is the time after which the key should be deleted, in seconds: either a relative
-// time from now (up to 1 month), or an absolute Unix epoch time.
-func (c *CacheClient) DeleteItem(key string, delay int32) (bool, error) {
+func (c *CacheClient) DeleteItem(key string) (bool, error) {
+	delay := int32(300) // 5 minutes
 	item, err := c.client.Get(key)
 	if err != nil {
 		return false, err
