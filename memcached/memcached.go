@@ -135,9 +135,9 @@ func (c *CacheClient) UpdateItem(key string, value interface{}, expiration int32
 	return true, nil
 }
 
-// DeleteItem deletes a given key from the server.
+// DeleteWithoutDelay deletes a given key from the server without any delay
 // It returns false,error if delete was unsuccessful.
-func (c *CacheClient) DeleteItem(key string) (bool, error) {
+func (c *CacheClient) DeleteWithoutDelay(key string) (bool, error) {
 	err := c.client.Delete(key)
 	if err != nil {
 		return false, err
@@ -145,12 +145,12 @@ func (c *CacheClient) DeleteItem(key string) (bool, error) {
 	return true, nil
 }
 
-// DeleteWithDelay deletes a given key from the server after the delay mentioned.
+// DeleteItem deletes a given key from the server after the delay mentioned.
 // It returns false, error if the operation was unsuccessful.
 // key is the memcache key to be deleted.
 // delay is the time after which the key should be deleted, in seconds: either a relative
 // time from now (up to 1 month), or an absolute Unix epoch time.
-func (c *CacheClient) DeleteWithDelay(key string, delay int32) (bool, error) {
+func (c *CacheClient) DeleteItem(key string, delay int32) (bool, error) {
 	item, err := c.client.Get(key)
 	if err != nil {
 		return false, err
