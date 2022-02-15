@@ -52,18 +52,6 @@ type Consumer struct {
 	ReplyCompletionChannel          chan bool
 }
 
-func (kc *Consumer) applyCustomConfig(customConfig map[string]interface{}) {
-	if customConfig != nil {
-		for k, v := range customConfig {
-			if k != "enable.auto.commit" {
-				kc.config.SetKey(k, v)
-			} else {
-				kc.logger.LogWarning("Offset auto commit is disabled. Please use `SetOffsetCommitMessageInterval` method to set message interval between subsequent offset commit.")
-			}
-		}
-	}
-}
-
 // ForceCommitOffset Methods actually call kafka commit offset API
 func (kc *Consumer) ForceCommitOffset() {
 	kc.Consumer.Commit()

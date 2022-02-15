@@ -17,7 +17,6 @@ type Producer struct {
 	config                *kafka.ConfigMap
 	BrokerServers         string
 	IsAutoEventLogEnabled bool
-	eventBlockChannel     chan bool
 	producer              *kafka.Producer
 	EventsChannel         chan kafka.Event
 	publishChannel        chan *kafka.Message
@@ -181,7 +180,7 @@ func NewKafkaProducer(brokerServers string, options ...ProducerOption) *Producer
 	kp.producer = producer
 	kp.publishChannel = producer.ProduceChannel()
 	kp.EventsChannel = producer.Events()
-	kp.logger.LogInfo(fmt.Sprintf("Created Producer"))
+	kp.logger.LogInfo("Created Producer")
 	kp.startEventLogging()
 	kp.setGracefulCleaning()
 	return kp
