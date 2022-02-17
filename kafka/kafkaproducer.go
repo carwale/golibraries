@@ -23,6 +23,12 @@ type Producer struct {
 	CloseChannel          chan os.Signal
 }
 
+type KafkaTopic struct {
+	TopicName         string
+	Partitions        int
+	ReplicationFactor int
+}
+
 func (kp *Producer) startEventLogging() {
 	go func() {
 		for {
@@ -83,8 +89,8 @@ func (kp *Producer) PublishMessageToTopicWithKey(msg *[]byte, topic string, key 
 	}
 }
 
-//CreateTopic creats a new topic if it does not exists
-func (kp *Producer) CreateTopic(topicName string) error {
+//CreateTopics creats a new topics if they do not exist.
+func (kp *Producer) CreateTopics(topics ...KafkaTopic) error {
 	adminClient, err := kafka.NewAdminClientFromProducer(kp.producer)
 	if err != nil {
 		kp.logger.LogError("Could not create kafka admin client", err)
@@ -95,17 +101,26 @@ func (kp *Producer) CreateTopic(topicName string) error {
 		kp.logger.LogError("Could not get metadata from kafka admin client", err)
 		return err
 	}
-	_, ok := metadata.Topics[topicName]
-	if !ok {
-		topic, err := adminClient.CreateTopics(context.Background(), []kafka.TopicSpecification{
-			{Topic: topicName, NumPartitions: 1, ReplicationFactor: 2},
-		})
-		if err != nil {
-			kp.logger.LogError("Could not create kafka admin client", err)
-			return err
+	var validTopics []kafka.TopicSpecification
+	for _, topic := range topics {
+		_, ok := metadata.Topics[topic.TopicName]
+		if !ok {
+			validTopics = append(validTopics, kafka.TopicSpecification{Topic: topic.TopicName, NumPartitions: topic.Partitions, ReplicationFactor: topic.ReplicationFactor})
 		}
-		kp.logger.LogWarning("created topic: " + topic[0].Topic)
 	}
+
+	if len(validTopics) == 0 {
+		kp.logger.LogWarningf("No new topics found")
+		return nil
+	}
+
+	topicResult, err := adminClient.CreateTopics(context.Background(), validTopics)
+	if err != nil {
+		kp.logger.LogError("Could not create kafka admin client", err)
+		return err
+	}
+	kp.logger.LogWarningf("created topics: %#v", topicResult)
+
 	return nil
 }
 
