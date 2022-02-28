@@ -23,7 +23,7 @@ type Producer struct {
 	CloseChannel          chan os.Signal
 }
 
-// KafkaTopic is used to create topics in kafka
+// KafkaTopic is used to create topics in kafka.
 type KafkaTopic struct {
 	TopicName         string
 	Partitions        int
