@@ -139,9 +139,9 @@ func SetProducerCustomConfig(customConfig map[string]interface{}) ProducerOption
 	}
 }
 
-//ProducerLogger sets the logger for consul
+//SetProducerLogger sets the logger for consul
 //Defaults to consul logger
-func ProducerLogger(customLogger *gologger.CustomLogger) ProducerOption {
+func SetProducerLogger(customLogger *gologger.CustomLogger) ProducerOption {
 	return func(kp *Producer) { kp.logger = customLogger }
 }
 
