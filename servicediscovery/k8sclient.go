@@ -1,6 +1,7 @@
 package servicediscovery
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -89,7 +90,7 @@ func (k *k8sClient) DeregisterService(serviceID string) {
 // GetHealthyServicesFromK8sCluster returns service instances from k8s cluster
 func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
 
-	endpoints, err := k.client.CoreV1().Endpoints(k.namespace).Get(moduleName, metav1.GetOptions{})
+	endpoints, err := k.client.CoreV1().Endpoints(k.namespace).Get(context.Background() ,moduleName, metav1.GetOptions{})
 
 	if err != nil {
 		return nil, err
@@ -111,7 +112,7 @@ func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
 // GetHealthyServiceWithZoneInfo returns all endpoints of a service along with zone info
 func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]EndpointsWithExtraInfo, error) {
 
-	endpointSlicesList, err:= k.client.DiscoveryV1beta1().EndpointSlices(k.namespace).List(v1.ListOptions{LabelSelector: "kubernetes.io/service-name="+moduleName})
+	endpointSlicesList, err:= k.client.DiscoveryV1beta1().EndpointSlices(k.namespace).List(context.Background(), v1.ListOptions{LabelSelector: "kubernetes.io/service-name="+moduleName})
 	if err != nil {
 		return nil, err
 	}
