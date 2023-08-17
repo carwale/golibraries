@@ -90,12 +90,12 @@ func (k *k8sClient) DeregisterService(serviceID string) {
 // GetHealthyServicesFromK8sCluster returns service instances from k8s cluster
 func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
 
-	endpoints, err := k.client.CoreV1().Endpoints(k.namespace).Get(context.Background() ,moduleName, metav1.GetOptions{})
+	endpoints, err := k.client.CoreV1().Endpoints(k.namespace).Get(context.Background(), moduleName, metav1.GetOptions{})
 
 	if err != nil {
 		return nil, err
 	}
-
+	fmt.Printf("Endpoints fetched: %v\n", endpoints)
 	for _, subset := range endpoints.Subsets {
 		if len(subset.Ports) > 0 {
 			port := subset.Ports[0].Port
@@ -116,7 +116,9 @@ func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]Endpoint
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Endpoints fetched: %v\n", endpointSlicesList)
 	if len(endpointSlicesList.Items) > 0 {
+		fmt.Printf("Endpoints fetched: %v\n", endpointSlicesList)
 		var instances []EndpointsWithExtraInfo
 		for _, endpointSlice := range endpointSlicesList.Items {
 
@@ -125,11 +127,11 @@ func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]Endpoint
 
 				for _, endpoint := range endpointSlice.Endpoints {
 					if len(endpoint.Addresses) > 0 {
-						if endpoint.Conditions.Ready != nil  && *endpoint.Conditions.Ready {
+						if endpoint.Conditions.Ready != nil && *endpoint.Conditions.Ready {
 							for _, address := range endpoint.Addresses {
 								instances = append(instances, EndpointsWithExtraInfo{
 									Address: address + ":" + strconv.Itoa(int(*port)),
-									Zone: endpoint.Topology["topology.kubernetes.io/zone"],
+									Zone:    endpoint.Topology["topology.kubernetes.io/zone"],
 								})
 							}
 						}
