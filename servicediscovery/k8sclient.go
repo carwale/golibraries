@@ -112,7 +112,7 @@ func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
 // GetHealthyServiceWithZoneInfo returns all endpoints of a service along with zone info
 func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]EndpointsWithExtraInfo, error) {
 
-	endpointSlicesList, err:= k.client.DiscoveryV1beta1().EndpointSlices(k.namespace).List(context.Background(), v1.ListOptions{LabelSelector: "kubernetes.io/service-name="+moduleName})
+	endpointSlicesList, err:= k.client.DiscoveryV1().EndpointSlices(k.namespace).List(context.Background(), v1.ListOptions{LabelSelector: "kubernetes.io/service-name="+moduleName})
 	if err != nil {
 		return nil, err
 	}
