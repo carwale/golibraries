@@ -129,7 +129,7 @@ func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]Endpoint
 							for _, address := range endpoint.Addresses {
 								instances = append(instances, EndpointsWithExtraInfo{
 									Address: address + ":" + strconv.Itoa(int(*port)),
-									Zone: endpoint.DeprecatedTopology["topology.kubernetes.io/zone"],
+									Zone: *endpoint.Zone,
 								})
 							}
 						}
