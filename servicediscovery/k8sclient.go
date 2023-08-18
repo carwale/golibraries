@@ -95,7 +95,7 @@ func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Endpoints fetched: %v\n", endpoints)
+	// fmt.Printf("Endpoints fetched: %v\n", endpoints)
 	for _, subset := range endpoints.Subsets {
 		if len(subset.Ports) > 0 {
 			port := subset.Ports[0].Port
@@ -116,9 +116,9 @@ func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]Endpoint
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("Endpoints fetched: %v\n", endpointSlicesList)
+	// fmt.Printf("Endpoints fetched: %v\n", endpointSlicesList)
 	if len(endpointSlicesList.Items) > 0 {
-		fmt.Printf("Endpoints fetched: %v\n", endpointSlicesList)
+		// fmt.Printf("Endpoints fetched: %v\n", endpointSlicesList)
 		var instances []EndpointsWithExtraInfo
 		for _, endpointSlice := range endpointSlicesList.Items {
 
