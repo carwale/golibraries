@@ -161,3 +161,16 @@ func (c *CacheClient) DeleteItem(key string) (bool, error) {
 	}
 	return true, nil
 }
+
+// Checks whether a key exists in memcache
+// It returns true if key exists and returns false if key not found
+func (c *CacheClient) DoesKeyExist(key string) (bool, error) {
+	_, err := c.client.Get(key)
+	if err != nil {
+		if err == memcache.ErrCacheMiss {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
