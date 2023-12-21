@@ -104,7 +104,7 @@ func (c *ConsulAgent) RegisterService(name, ipAddress, port, healthCheckPort str
 	serviceID, err := c.registerServiceOnConsul(consulServiceName, ipAddress, hostName, gatewayPort, tags, metadata)
 	if err != nil {
 		c.logger.LogError(fmt.Sprintf("Could not register %s on consul", consulServiceName), err)
-		panic(fmt.Errorf("Could not register %s on consul", consulServiceName))
+		panic(fmt.Errorf("could not register %s on consul", consulServiceName))
 	}
 	workingDir, err := filepath.Abs(filepath.Dir(os.Args[0]))
 	if err != nil {
@@ -116,13 +116,13 @@ func (c *ConsulAgent) RegisterService(name, ipAddress, port, healthCheckPort str
 		monScriptLocation := workingDir + string(os.PathSeparator) + "mon" + string(os.PathSeparator) + c.consulMonScriptName
 		ok := c.registerCheck(serviceID, "checkMon", name+" check mon", monScriptLocation)
 		if !ok {
-			err = errors.New("Could not register consul service check")
+			err = errors.New("could not register consul service check")
 		}
 	}
 
 	ok := c.registerGrpcCheck(serviceID, "checkService", name+" check service", ipAddress, healthCheckPort, checkFunction)
 	if !ok {
-		err = errors.New("Could not register gRPC consul service check")
+		err = errors.New("could not register gRPC consul service check")
 	}
 	return serviceID, err
 }
