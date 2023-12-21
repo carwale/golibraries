@@ -12,7 +12,7 @@ type EndpointsWithExtraInfo struct {
 type IServiceDiscoveryAgent interface {
 	//RegisterService will register the service given the name, ip and port
 	//It returns the ID of the service
-	RegisterService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error), isDockerType bool) (string, error)
+	RegisterService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error), isDockerType bool, tags []string, metadata map[string]string) (string, error)
 	//DeregisterService will deregister the service given the ID
 	DeregisterService(serviceID string)
 	//GetHealthyService will give a list of all the instances of the module
