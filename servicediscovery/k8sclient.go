@@ -10,7 +10,6 @@ import (
 
 	"k8s.io/client-go/rest"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -24,21 +23,21 @@ type k8sClient struct {
 
 type K8SOptions func(k *k8sClient)
 
-//IsInK8SCluster sets whether running inside kubernetes cluster. Defults to true.
+// IsInK8SCluster sets whether running inside kubernetes cluster. Defults to true.
 func IsInK8SCluster(flag bool) K8SOptions {
 	return func(k *k8sClient) {
 		k.isInK8sCluster = flag
 	}
 }
 
-//SetK8sNamespace sets the namespace to be used for querying k8s. Defaults to 'default'
+// SetK8sNamespace sets the namespace to be used for querying k8s. Defaults to 'default'
 func SetK8sNamespace(namespace string) K8SOptions {
 	return func(k *k8sClient) {
 		k.namespace = namespace
 	}
 }
 
-//NewK8sClient returns new K8s Service discovery agent
+// NewK8sClient returns new K8s Service discovery agent
 func NewK8sClient(options ...K8SOptions) IServiceDiscoveryAgent {
 
 	client := &k8sClient{
@@ -79,7 +78,7 @@ func NewK8sClient(options ...K8SOptions) IServiceDiscoveryAgent {
 	return client
 }
 
-func (k *k8sClient) RegisterService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error), isDockerType bool) (string, error) {
+func (k *k8sClient) RegisterService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error), isDockerType bool, tags []string, metadata map[string]string) (string, error) {
 	return "", nil
 }
 
@@ -90,7 +89,7 @@ func (k *k8sClient) DeregisterService(serviceID string) {
 // GetHealthyServicesFromK8sCluster returns service instances from k8s cluster
 func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
 
-	endpoints, err := k.client.CoreV1().Endpoints(k.namespace).Get(context.Background(), moduleName, metav1.GetOptions{})
+	endpoints, err := k.client.CoreV1().Endpoints(k.namespace).Get(context.Background(), moduleName, v1.GetOptions{})
 
 	if err != nil {
 		return nil, err
@@ -106,13 +105,13 @@ func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
 			return instances, nil
 		}
 	}
-	return nil, fmt.Errorf("No instances found for %s", moduleName)
+	return nil, fmt.Errorf("no instances found for %s", moduleName)
 }
 
 // GetHealthyServiceWithZoneInfo returns all endpoints of a service along with zone info
 func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]EndpointsWithExtraInfo, error) {
 
-	endpointSlicesList, err:= k.client.DiscoveryV1().EndpointSlices(k.namespace).List(context.Background(), v1.ListOptions{LabelSelector: "kubernetes.io/service-name="+moduleName})
+	endpointSlicesList, err := k.client.DiscoveryV1().EndpointSlices(k.namespace).List(context.Background(), v1.ListOptions{LabelSelector: "kubernetes.io/service-name=" + moduleName})
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +130,7 @@ func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]Endpoint
 							for _, address := range endpoint.Addresses {
 								instances = append(instances, EndpointsWithExtraInfo{
 									Address: address + ":" + strconv.Itoa(int(*port)),
-									Zone: *endpoint.Zone,
+									Zone:    *endpoint.Zone,
 								})
 							}
 						}
@@ -141,7 +140,7 @@ func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]Endpoint
 		}
 		return instances, nil
 	}
-	return nil, fmt.Errorf("No instances found for %s", moduleName)
+	return nil, fmt.Errorf("no instances found for %s", moduleName)
 }
 
 func homeDir() string {

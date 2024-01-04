@@ -8,7 +8,7 @@ type multiClient struct {
 	clients []IServiceDiscoveryAgent
 }
 
-//NewMultiSourceClient returns new K8s Service discovery agent
+// NewMultiSourceClient returns new K8s Service discovery agent
 func NewMultiSourceClient(clients ...IServiceDiscoveryAgent) IServiceDiscoveryAgent {
 	multiclient := &multiClient{
 		clients: clients,
@@ -16,7 +16,7 @@ func NewMultiSourceClient(clients ...IServiceDiscoveryAgent) IServiceDiscoveryAg
 	return multiclient
 }
 
-func (m *multiClient) RegisterService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error), isDockerType bool) (string, error) {
+func (m *multiClient) RegisterService(name, ipAddress, port, healthCheckPort string, checkFunction func() (bool, error), isDockerType bool, tags []string, metadata map[string]string) (string, error) {
 	// not implemented as returning multiple service ids violates interface
 	// to decide whether it is needed
 	return "", nil
@@ -38,7 +38,7 @@ func (m *multiClient) GetHealthyService(moduleName string) ([]string, error) {
 		}
 	}
 	if len(endpoints) == 0 {
-		return nil, fmt.Errorf("No instances found for %s", moduleName)
+		return nil, fmt.Errorf("no instances found for %s", moduleName)
 	}
 	return endpoints, nil
 }
@@ -53,7 +53,7 @@ func (m *multiClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]Endpoi
 		}
 	}
 	if len(endpoints) == 0 {
-		return nil, fmt.Errorf("No instances found for %s", moduleName)
+		return nil, fmt.Errorf("no instances found for %s", moduleName)
 	}
 	return endpoints, nil
 }
