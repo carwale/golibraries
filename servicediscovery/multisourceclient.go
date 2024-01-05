@@ -29,10 +29,10 @@ func (m *multiClient) DeregisterService(serviceID string) {
 }
 
 // GetHealthyServices returns service instances from all clients
-func (m *multiClient) GetHealthyService(moduleName string) ([]string, error) {
+func (m *multiClient) GetHealthyService(moduleName string, k8sNamespace string) ([]string, error) {
 	var endpoints []string
 	for _, client := range m.clients {
-		ep, err := client.GetHealthyService(moduleName)
+		ep, err := client.GetHealthyService(moduleName, k8sNamespace)
 		if err == nil {
 			endpoints = append(endpoints, ep...)
 		}
@@ -44,10 +44,10 @@ func (m *multiClient) GetHealthyService(moduleName string) ([]string, error) {
 }
 
 // GetHealthyServiceWithZoneInfo returns service instances from all clients along with zone info
-func (m *multiClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]EndpointsWithExtraInfo, error) {
+func (m *multiClient) GetHealthyServiceWithZoneInfo(moduleName string, k8sNamespace string) ([]EndpointsWithExtraInfo, error) {
 	var endpoints []EndpointsWithExtraInfo
 	for _, client := range m.clients {
-		ep, err := client.GetHealthyServiceWithZoneInfo(moduleName)
+		ep, err := client.GetHealthyServiceWithZoneInfo(moduleName, k8sNamespace)
 		if err == nil {
 			endpoints = append(endpoints, ep...)
 		}

@@ -196,17 +196,24 @@ func (c *ConsulAgent) DeregisterService(serviceID string) {
 }
 
 // GetHealthyService will give all the IPs of the service
-func (c *ConsulAgent) GetHealthyService(moduleName string) ([]string, error) {
-	res, _, err := c.consulAgent.Health().Service(moduleName, "", true, nil)
+func (c *ConsulAgent) GetHealthyService(moduleName string, k8sNamespace string) ([]string, error) {
+	res, _, err := c.consulAgent.Health().Service(moduleName, k8sNamespace, true, nil)
+	ipAddList := make([]string, 0)
 	if err != nil {
-		c.logger.LogError("Error getting healthy IP Addresses for module "+moduleName+" from consul", err)
+		c.logger.LogError("Error getting healthy IP Addresses for module "+moduleName+" from consul for namespace"+k8sNamespace, err)
 		return nil, err
 	}
-	ipAddList := make([]string, 0)
 	if len(res) == 0 {
-		err = errors.New("No healthy instance of module " + moduleName + " found")
-		c.logger.LogInfo("No instance found for module " + moduleName + " from consul")
-		return ipAddList, err
+		res, _, err = c.consulAgent.Health().Service(moduleName, "", true, nil)
+		if err != nil {
+			c.logger.LogError("Error getting healthy IP Addresses for module "+moduleName+" from consul", err)
+			return nil, err
+		}
+		if len(res) == 0 {
+			err = errors.New("No healthy instance of module " + moduleName + " found")
+			c.logger.LogInfo("No instance found for module " + moduleName + " from consul")
+			return ipAddList, err
+		}
 	}
 	for _, val := range res {
 		address := val.Service.Address
@@ -217,17 +224,24 @@ func (c *ConsulAgent) GetHealthyService(moduleName string) ([]string, error) {
 }
 
 // GetHealthyServiceWithZoneInfo will give all the IPs of the service and other info like zones
-func (c *ConsulAgent) GetHealthyServiceWithZoneInfo(moduleName string) ([]EndpointsWithExtraInfo, error) {
-	res, _, err := c.consulAgent.Health().Service(moduleName, "", true, nil)
+func (c *ConsulAgent) GetHealthyServiceWithZoneInfo(moduleName string, k8sNamspace string) ([]EndpointsWithExtraInfo, error) {
+	ipAddList := make([]EndpointsWithExtraInfo, 0)
+	res, _, err := c.consulAgent.Health().Service(moduleName, k8sNamspace, true, nil)
 	if err != nil {
-		c.logger.LogError("Error getting healthy IP Addresses for module "+moduleName+" from consul", err)
+		c.logger.LogError("Error getting healthy IP Addresses for module "+moduleName+" from consul for namespace"+k8sNamspace, err)
 		return nil, err
 	}
-	ipAddList := make([]EndpointsWithExtraInfo, 0)
 	if len(res) == 0 {
-		err = errors.New("No healthy instance of module " + moduleName + " found")
-		c.logger.LogInfo("No instance found for module " + moduleName + " from consul")
-		return ipAddList, err
+		res, _, err = c.consulAgent.Health().Service(moduleName, "", true, nil)
+		if err != nil {
+			c.logger.LogError("Error getting healthy IP Addresses for module "+moduleName+" from consul", err)
+			return nil, err
+		}
+		if len(res) == 0 {
+			err = errors.New("No healthy instance of module " + moduleName + " found")
+			c.logger.LogInfo("No instance found for module " + moduleName + " from consul")
+			return ipAddList, err
+		}
 	}
 	for _, val := range res {
 		address := val.Service.Address

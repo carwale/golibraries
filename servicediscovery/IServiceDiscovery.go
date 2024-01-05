@@ -16,7 +16,7 @@ type IServiceDiscoveryAgent interface {
 	//DeregisterService will deregister the service given the ID
 	DeregisterService(serviceID string)
 	//GetHealthyService will give a list of all the instances of the module
-	GetHealthyService(moduleName string) ([]string, error)
+	GetHealthyService(moduleName string, k8sNamespace string) ([]string, error)
 	//GetHealthyServiceWithZoneInfo will give a list of all the instances of the module along with other infor like zones for all the pods
-	GetHealthyServiceWithZoneInfo(moduleName string) ([]EndpointsWithExtraInfo, error)
+	GetHealthyServiceWithZoneInfo(moduleName string, k8sNamespace string) ([]EndpointsWithExtraInfo, error)
 }
