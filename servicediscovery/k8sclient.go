@@ -87,7 +87,7 @@ func (k *k8sClient) DeregisterService(serviceID string) {
 }
 
 // GetHealthyServicesFromK8sCluster returns service instances from k8s cluster
-func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
+func (k *k8sClient) GetHealthyService(moduleName string, k8sNamespace string) ([]string, error) {
 
 	endpoints, err := k.client.CoreV1().Endpoints(k.namespace).Get(context.Background(), moduleName, v1.GetOptions{})
 
@@ -109,7 +109,7 @@ func (k *k8sClient) GetHealthyService(moduleName string) ([]string, error) {
 }
 
 // GetHealthyServiceWithZoneInfo returns all endpoints of a service along with zone info
-func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string) ([]EndpointsWithExtraInfo, error) {
+func (k *k8sClient) GetHealthyServiceWithZoneInfo(moduleName string, k8sNamespace string) ([]EndpointsWithExtraInfo, error) {
 
 	endpointSlicesList, err := k.client.DiscoveryV1().EndpointSlices(k.namespace).List(context.Background(), v1.ListOptions{LabelSelector: "kubernetes.io/service-name=" + moduleName})
 	if err != nil {
