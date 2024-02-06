@@ -211,7 +211,7 @@ func (c *ConsulAgent) GetHealthyService(moduleName string, k8sNamespace string) 
 		}
 		if len(res) == 0 {
 			err = errors.New("No healthy instance of module " + moduleName + " found")
-			c.logger.LogInfo("No instance found for module " + moduleName + " from consul")
+			c.logger.LogError("No instance found for module " + moduleName + " from consul")
 			return ipAddList, err
 		}
 	}
@@ -239,7 +239,7 @@ func (c *ConsulAgent) GetHealthyServiceWithZoneInfo(moduleName string, k8sNamspa
 		}
 		if len(res) == 0 {
 			err = errors.New("No healthy instance of module " + moduleName + " found")
-			c.logger.LogInfo("No instance found for module " + moduleName + " from consul")
+			c.logger.LogError("No instance found for module " + moduleName + " from consul")
 			return ipAddList, err
 		}
 	}
