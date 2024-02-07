@@ -29,6 +29,8 @@ type OperationManager struct {
 	channelProvider *channelprovider.ChannelProvider
 	queueProps      queueProperties
 	dlQueueProps    queueProperties
+	username string
+	password string
 }
 
 // queueProperties struct holds queue details
@@ -42,15 +44,17 @@ type queueProperties struct {
 
 // NewRabbitMQManager : returns RabbitMQ OperationManager.
 // panics if empty server list given.
-func NewRabbitMQManager(logger *gologger.CustomLogger, rabbitMqServers []string, queueName string) *OperationManager {
+func NewRabbitMQManager(logger *gologger.CustomLogger, rabbitMqServers []string, queueName string, username string, password string) *OperationManager {
 	if len(rabbitMqServers) == 0 {
 		panic("No rabbitmq servers provided.")
 	}
 	om := &OperationManager{
 		logger:          logger,
 		rabbitMqServers: rabbitMqServers,
+		username: username,
+		password: password,
 	}
-	om.channelProvider = channelprovider.NewChannelProviderWithServers(om.logger, om.rabbitMqServers)
+	om.channelProvider = channelprovider.NewChannelProviderWithServers(om.logger, om.rabbitMqServers, om.username, om.password)
 	// Init queue properties
 	queueName = strings.ToUpper(queueName)
 	dlQueueName := strings.ToUpper(queueName) + dlQueueSuffix

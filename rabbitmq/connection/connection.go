@@ -16,7 +16,7 @@ type Provider struct {
 var uclogger *gologger.CustomLogger
 
 // NewConnection provides a new rabbitmq connection, retries for up to 30 minutes in case of failure
-func (provider *Provider) NewConnection(server string, logger *gologger.CustomLogger) (*amqp.Connection, error) {
+func (provider *Provider) NewConnection(server string, username string, password string, logger *gologger.CustomLogger) (*amqp.Connection, error) {
 	var connection *amqp.Connection
 
 	var err error
@@ -27,8 +27,9 @@ func (provider *Provider) NewConnection(server string, logger *gologger.CustomLo
 
 	maxDelay := 1800 //30 minutes
 
-	uri := "amqp://guest:guest@" + server
-
+	// uri := "amqp://guest:guest@" + server
+	uri := fmt.Sprintf("amqp://%s:%s@%s", username, password, server)
+	fmt.Printf("final connection uri is: %s", uri)
 	for {
 		connection, err = amqp.Dial(uri)
 
