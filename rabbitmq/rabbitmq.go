@@ -29,8 +29,8 @@ type OperationManager struct {
 	channelProvider *channelprovider.ChannelProvider
 	queueProps      queueProperties
 	dlQueueProps    queueProperties
-	username string
-	password string
+	username 		string
+	password 		string
 }
 
 // queueProperties struct holds queue details
@@ -47,6 +47,9 @@ type queueProperties struct {
 func NewRabbitMQManager(logger *gologger.CustomLogger, rabbitMqServers []string, queueName string, username string, password string) *OperationManager {
 	if len(rabbitMqServers) == 0 {
 		panic("No rabbitmq servers provided.")
+	}
+	if (username == "" || password == "") {
+		panic("RabbitMQ username or password is empty")
 	}
 	om := &OperationManager{
 		logger:          logger,
