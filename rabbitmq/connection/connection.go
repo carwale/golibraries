@@ -29,7 +29,7 @@ func (provider *Provider) NewConnection(server string, username string, password
 
 	// uri := "amqp://guest:guest@" + server
 	uri := fmt.Sprintf("amqp://%s:%s@%s", username, password, server)
-	fmt.Printf("final connection uri is: %s", uri)
+	uclogger.LogDebugf("final connection uri is: %s", uri)
 	for {
 		connection, err = amqp.Dial(uri)
 
