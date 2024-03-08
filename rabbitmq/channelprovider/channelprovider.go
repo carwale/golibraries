@@ -23,17 +23,17 @@ type ChannelProvider struct {
 }
 
 //NewChannelProvider gives you a new channel provider. It takes the list of servers from "rabbitmq" in config
-func NewChannelProvider(logger *gologger.CustomLogger) *ChannelProvider {
-	return NewChannelProviderWithServers(logger, viper.GetStringSlice("rabbitmq"))
+func NewChannelProvider(logger *gologger.CustomLogger, username string, password string) *ChannelProvider {
+	return NewChannelProviderWithServers(logger, viper.GetStringSlice("rabbitmq"), username, password)
 }
 
 //NewChannelProviderWithServers gives you a new channel provider. You have to pass a list of rabbitmq servers.
-func NewChannelProviderWithServers(logger *gologger.CustomLogger, rabbitMqServers []string) *ChannelProvider {
+func NewChannelProviderWithServers(logger *gologger.CustomLogger, rabbitMqServers []string, username string, password string) *ChannelProvider {
 
 	once.Do(func() {
 		serverList := rabbitMqServers
 		channelPro = &ChannelProvider{
-			pool:     connectionpool.NewConnectionPool(&serverList, &connection.Provider{}, logger),
+			pool:     connectionpool.NewConnectionPool(&serverList, username, password, &connection.Provider{}, logger),
 			uclogger: logger,
 		}
 

@@ -21,7 +21,7 @@ type Pool struct {
 
 // IConnectionProvider defines the interface to be implemented by a connection provider.
 type IConnectionProvider interface {
-	NewConnection(string, *gologger.CustomLogger) (*amqp.Connection, error)
+	NewConnection(string, string, string, *gologger.CustomLogger) (*amqp.Connection, error)
 }
 
 // Container contains connection and related info
@@ -33,7 +33,7 @@ type Container struct {
 var uclogger *gologger.CustomLogger
 
 // NewConnectionPool returns new connection pool, waits for 3 seconds before returning
-func NewConnectionPool(serverList *[]string, connectionProvider IConnectionProvider, logger *gologger.CustomLogger) *Pool {
+func NewConnectionPool(serverList *[]string, username string, password string,  connectionProvider IConnectionProvider, logger *gologger.CustomLogger) *Pool {
 	pool := &Pool{
 		connections:        make(map[string]*Container),
 		serverList:         *serverList,
@@ -45,7 +45,7 @@ func NewConnectionPool(serverList *[]string, connectionProvider IConnectionProvi
 
 	uclogger = logger
 	for _, server := range *serverList {
-		go pool.addNewConnection(server)
+		go pool.addNewConnection(server, username, password)
 	}
 
 	go func() {
@@ -70,17 +70,17 @@ func NewConnectionPool(serverList *[]string, connectionProvider IConnectionProvi
 			}
 		}
 	}()
-	
+
 	return pool
 }
 
 // addNewConnection manages establishing new connection and adding it to pool,
 // also listens for connection errors and retries connecting.
-func (pool *Pool) addNewConnection(server string) {
-	conn, err := pool.connectionProvider.NewConnection(server, uclogger)
+func (pool *Pool) addNewConnection(server string, username string, password string) {
+	conn, err := pool.connectionProvider.NewConnection(server, username, password, uclogger)
 	if err != nil {
 		uclogger.LogError("could not establish rabbitmq connection", err)
-		go pool.addNewConnection(server) // retry establishing connection
+		go pool.addNewConnection(server, username, password) // retry establishing connection
 		return
 	}
 
@@ -100,7 +100,7 @@ func (pool *Pool) addNewConnection(server string) {
 		if conerr != nil {
 			pool.removeConnection <- container // send container to be removed from pool
 			uclogger.LogErrorWithoutError(fmt.Sprintf("Error in rabbitmq connection Code: %d Reason: %q, Server: %s", conerr.Code, conerr.Reason, server))
-			pool.addNewConnection(server)
+			pool.addNewConnection(server, username, password)
 		}
 	}()
 }

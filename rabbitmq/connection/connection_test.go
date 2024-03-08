@@ -12,6 +12,8 @@ func TestProvider_NewConnection(t *testing.T) {
 
 	type args struct {
 		server string
+		username string
+		password string
 	}
 	tests := []struct {
 		name     string
@@ -25,6 +27,8 @@ func TestProvider_NewConnection(t *testing.T) {
 			&Provider{},
 			args{
 				"172.16.0.11:5672",
+				"guest",
+				"guest",
 			},
 			nil,
 			false,
@@ -34,6 +38,8 @@ func TestProvider_NewConnection(t *testing.T) {
 			&Provider{},
 			args{
 				"172.16.2.79",
+				"guest",
+				"guest",
 			},
 			nil,
 			true,
@@ -41,7 +47,7 @@ func TestProvider_NewConnection(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := tt.provider.NewConnection(tt.args.server, gologger.NewLogger())
+			_, err := tt.provider.NewConnection(tt.args.server, tt.args.username, tt.args.password, gologger.NewLogger())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Provider.NewConnection() error = %v, wantErr %v", err, tt.wantErr)
 				return
