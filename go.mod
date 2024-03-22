@@ -4,13 +4,13 @@ go 1.20
 
 require (
 	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
-	github.com/confluentinc/confluent-kafka-go v1.8.2
+	github.com/confluentinc/confluent-kafka-go/v2 v2.0.2
 	github.com/google/uuid v1.3.0
 	github.com/hashicorp/consul/api v1.1.0
 	github.com/prometheus/client_golang v1.4.0
 	github.com/spf13/viper v1.7.1
 	github.com/streadway/amqp v0.0.0-20180528204448-e5adc2ada8b8
-	google.golang.org/grpc v1.34.0
+	google.golang.org/grpc v1.46.0
 	gopkg.in/Graylog2/go-gelf.v2 v2.0.0-20180326133423-4dbb9d721348
 	k8s.io/apimachinery v0.28.5
 	k8s.io/client-go v0.28.5
@@ -66,7 +66,7 @@ require (
 	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20201019141844-1ed22bb0c154 // indirect
+	google.golang.org/genproto v0.0.0-20220503193339-ba3ae3f07e29 // indirect
 	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.51.0 // indirect
