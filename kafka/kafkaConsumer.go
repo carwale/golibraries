@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/carwale/golibraries/gologger"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 // RawEvent holds the message in byte form

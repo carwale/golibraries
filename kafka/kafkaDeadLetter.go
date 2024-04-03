@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/carwale/golibraries/gologger"
-	"github.com/confluentinc/confluent-kafka-go/kafka"
+	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 )
 
 var dlConsumerInstanceCount int
