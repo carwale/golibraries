@@ -36,8 +36,9 @@ func SetServiceName(serviceName string) Option {
 	return func(t *CustomTracer) {
 		if serviceName == "" {
 			t.logger.LogError("service name cannot be empty for tracing", errors.New("InvalidArgument: service name cannot be empty"))
+		} else {
+			t.serviceName = serviceName
 		}
-		t.serviceName = serviceName
 	}
 }
 
@@ -49,25 +50,50 @@ func SetCollectorHost(collectorHost string) Option {
 	return func(t *CustomTracer) {
 		if collectorHost == "" {
 			t.logger.LogError("collectorHost cannot be empty for setting collector endpoint", errors.New("InvalidArgument: collectorHost cannot be empty"))
+		} else {
+			t.collectorHost = collectorHost
 		}
-		t.collectorHost = collectorHost
 	}
 }
 
 func SetTracingContext(ctx context.Context) Option {
-	return func(t *CustomTracer) { t.traceContext = ctx }
+	return func(t *CustomTracer) {
+		if ctx == nil {
+			t.logger.LogError("tracing context cannot be nil", errors.New("InvalidArgument: tracing context cannot be nil"))
+		} else {
+			t.traceContext = ctx
+		}
+	}
 }
 
 func SetSampler(sampler trace.Sampler) Option {
-	return func(t *CustomTracer) { t.sampler = sampler }
+	return func(t *CustomTracer) {
+		if sampler == nil {
+			t.logger.LogError("sampler cannot be nil", errors.New("InvalidArgument: sampler cannot be nil"))
+		} else {
+			t.sampler = sampler
+		}
+	}
 }
 
 func SetPropagator(propagator propagation.TextMapPropagator) Option {
-	return func(t *CustomTracer) { t.propagator = propagator }
+	return func(t *CustomTracer) {
+		if propagator == nil {
+			t.logger.LogError("propagator cannot be nil", errors.New("InvalidArgument: propagator cannot be nil"))
+		} else {
+			t.propagator = propagator
+		}
+	}
 }
 
 func SetOtelExporter(exporter *otlptrace.Exporter) Option {
-	return func(t *CustomTracer) { t.exporter = exporter }
+	return func(t *CustomTracer) {
+		if exporter == nil {
+			t.logger.LogError("exporter cannot be nil", errors.New("InvalidArgument: exporter cannot be nil"))
+		} else {
+			t.exporter = exporter
+		}
+	}
 }
 
 func NewCustomTracer(traceOptions ...Option) *CustomTracer {

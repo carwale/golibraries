@@ -2,6 +2,7 @@ package gologger
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/Graylog2/go-gelf.v2/gelf"
 )
 
@@ -23,6 +25,7 @@ type CustomLogger struct {
 	isTimeLoggingEnabled  bool
 	disableGraylog        bool
 	logger                *log.Logger
+	traceContext          context.Context
 }
 
 // Pair is a tuple of strings
@@ -66,6 +69,14 @@ func SetK8sNamespace(k8sNamespace string) Option {
 	return func(l *CustomLogger) {
 		if k8sNamespace != "" {
 			l.k8sNamespace = k8sNamespace
+		}
+	}
+}
+
+func SetTraceContext(traceContext context.Context) Option {
+	return func(l *CustomLogger) {
+		if traceContext != nil {
+			l.traceContext = traceContext
 		}
 	}
 }
@@ -162,13 +173,15 @@ func (l *CustomLogger) LogErrorInterface(v ...interface{}) {
 
 // LogError is used to send errors and a message along with the error
 func (l *CustomLogger) LogError(str string, err error) {
-	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q,"log_error": %q,"K8sNamespace": %q}`,
-		ERROR.String(), time.Now().String(), l.graylogFacility, str, err.Error(), l.k8sNamespace)
+	pairs := []Pair{
+		{"log_error", err.Error()},
+	}
+	l.logMessageWithExtras(str, ERROR, pairs)
 }
 
 // LogErrorWithoutError is used to send only a message and not an error
 func (l *CustomLogger) LogErrorWithoutError(str string) {
-	l.logMessage(str, ERROR)
+	l.logMessageWithExtras(str, ERROR, nil)
 }
 
 // LogErrorWithoutErrorf is used to send only a message and not an error
@@ -176,7 +189,7 @@ func (l *CustomLogger) LogErrorWithoutErrorf(str string, args ...interface{}) {
 	l.LogErrorWithoutError(fmt.Sprintf(str, args...))
 }
 
-//LogErrorMessage is used to send extra fields to graylog along with the error
+// LogErrorMessage is used to send extra fields to graylog along with the error
 func (l *CustomLogger) LogErrorMessage(str string, err error, pairs ...Pair) {
 	if err != nil {
 		pairs = append(pairs, Pair{"log_error", err.Error()})
@@ -187,7 +200,7 @@ func (l *CustomLogger) LogErrorMessage(str string, err error, pairs ...Pair) {
 // LogWarning is used to send warning messages
 func (l *CustomLogger) LogWarning(str string) {
 	if l.logLevel >= WARN {
-		l.logMessage(str, WARN)
+		l.logMessageWithExtras(str, WARN, nil)
 	}
 }
 
@@ -203,7 +216,7 @@ func (l *CustomLogger) LogWarningMessage(str string, pairs ...Pair) {
 	}
 }
 
-//LogInfoMessage is used to send extra fields to graylog
+// LogInfoMessage is used to send extra fields to graylog
 func (l *CustomLogger) LogInfoMessage(str string, pairs ...Pair) {
 	if l.logLevel >= INFO {
 		l.logMessageWithExtras(str, INFO, pairs)
@@ -213,7 +226,7 @@ func (l *CustomLogger) LogInfoMessage(str string, pairs ...Pair) {
 // LogInfo is used to send info messages
 func (l *CustomLogger) LogInfo(str string) {
 	if l.logLevel >= INFO {
-		l.logMessage(str, INFO)
+		l.logMessageWithExtras(str, INFO, nil)
 	}
 }
 
@@ -225,7 +238,7 @@ func (l *CustomLogger) LogInfof(str string, args ...interface{}) {
 // LogDebug is used to send debug messages
 func (l *CustomLogger) LogDebug(str string) {
 	if l.logLevel >= DEBUG {
-		l.logMessage(str, DEBUG)
+		l.logMessageWithExtras(str, DEBUG, nil)
 	}
 }
 
@@ -256,11 +269,20 @@ func (l *CustomLogger) LogMessageWithExtras(message string, level LogLevels, pai
 }
 
 func (l *CustomLogger) logMessageWithExtras(message string, level LogLevels, pairs []Pair) {
+	if len(pairs) == 0 {
+		pairs = make([]Pair, 0)
+	}
 	pairs = append(pairs, Pair{"log_level", level.String()})
 	pairs = append(pairs, Pair{"log_timestamp", time.Now().String()})
 	pairs = append(pairs, Pair{"log_facility", l.graylogFacility})
 	pairs = append(pairs, Pair{"log_message", message})
 	pairs = append(pairs, Pair{"K8sNamespace", l.k8sNamespace})
+	var ctx context.Context = l.traceContext
+	var span = trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		pairs = append(pairs, Pair{"trace_id", span.SpanContext().TraceID().String()})
+		pairs = append(pairs, Pair{"span_id", span.SpanContext().SpanID().String()})
+	}
 	var buffer bytes.Buffer
 	buffer.WriteString("{")
 	for index, pair := range pairs {
@@ -284,7 +306,9 @@ func (l *CustomLogger) Tic(s string) (string, time.Time) {
 
 // Toc will log the time taken by the funtion. Its input is the output of the Tic function
 // Here is an example code block for using Tic and Toc function
+//
 //	defer Toc(Tic("FunctionName"))
+//
 // This will the first line of the function
 func (l *CustomLogger) Toc(message string, startTime time.Time) {
 	if l.isTimeLoggingEnabled {
