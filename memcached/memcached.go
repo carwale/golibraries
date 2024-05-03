@@ -56,7 +56,6 @@ func CreateMemCacheObject(key string, value interface{}, expiration int32) (*mem
 // NewMemCachedClient returns a connected client server to cache to.
 // It returns the *CacheClient object if successful, else returns (nil,err)
 func NewMemCachedClient(serverList []string) (*CacheClient, error) {
-	fmt.Println("Local golibraries memcached client called")
 	memCacheClient := memcache.New(serverList...)
 	err := memCacheClient.Ping()
 	if err != nil {
