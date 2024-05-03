@@ -5,7 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 
-	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/carwale/gomemcache/memcache"
 )
 
 // CacheClient is used to add,update,remove items from memcache
