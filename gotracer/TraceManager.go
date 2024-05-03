@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/carwale/golibraries/gologger"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
@@ -96,6 +95,14 @@ func SetOtelExporter(exporter *otlptrace.Exporter) Option {
 	}
 }
 
+func (c *CustomTracer) GetTraceProvider() *trace.TracerProvider {
+	return c.traceProvider
+}
+
+func (c *CustomTracer) GetTextMapPropagator() propagation.TextMapPropagator {
+	return c.propagator
+}
+
 func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 	customTracer := &CustomTracer{
 		sampler:      trace.AlwaysSample(),
@@ -123,8 +130,6 @@ func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 	}
 
 	traceProvider := trace.NewTracerProvider(trace.WithResource(res), trace.WithBatcher(exporter), trace.WithSampler(customTracer.sampler))
-	otel.SetTracerProvider(traceProvider)
-	otel.SetTextMapPropagator(customTracer.propagator)
 	customTracer.traceProvider = traceProvider
 	customTracer.exporter = exporter
 	return customTracer
