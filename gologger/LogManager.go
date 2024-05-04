@@ -283,6 +283,7 @@ func (l *CustomLogger) logMessageWithExtras(message string, level LogLevels, pai
 		pairs = append(pairs, Pair{"trace_id", span.SpanContext().TraceID().String()})
 		pairs = append(pairs, Pair{"span_id", span.SpanContext().SpanID().String()})
 	}
+	defer span.End()
 	var buffer bytes.Buffer
 	buffer.WriteString("{")
 	for index, pair := range pairs {

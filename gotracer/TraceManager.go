@@ -2,15 +2,17 @@ package gotracer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"time"
 
+	kvStore "github.com/carwale/golibraries/consulagent"
 	"github.com/carwale/golibraries/gologger"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.20.0"
 )
 
 type CustomTracer struct {
@@ -23,12 +25,34 @@ type CustomTracer struct {
 	sampler        trace.Sampler
 	propagator     propagation.TextMapPropagator
 	exporter       *otlptrace.Exporter
+	resource       *resource.Resource
+	consulKVStore  *kvStore.ConsulAgent
 }
 
 type Option func(t *CustomTracer)
 
 func SetLogger(logger *gologger.CustomLogger) Option {
 	return func(t *CustomTracer) { t.logger = logger }
+}
+
+func SetConsulKVStore(consulKVStore *kvStore.ConsulAgent) Option {
+	return func(t *CustomTracer) {
+		if consulKVStore == nil {
+			t.logger.LogError("consul kv store cannot be nil", errors.New("InvalidArgument: consul kv store cannot be nil"))
+		} else {
+			t.consulKVStore = consulKVStore
+		}
+	}
+}
+
+func SetResource(resource *resource.Resource) Option {
+	return func(t *CustomTracer) {
+		if resource == nil {
+			t.logger.LogError("resource cannot be nil", errors.New("InvalidArgument: resource cannot be nil"))
+		} else {
+			t.resource = resource
+		}
+	}
 }
 
 func SetServiceName(serviceName string) Option {
@@ -116,26 +140,37 @@ func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 		customTracer.logger.LogError("cannot enable tracing, as service is not inside kubernetes", errors.New("cannot enable tracing service not inside kubernetes"))
 		return nil
 	}
-
-	res, err := resource.New(customTracer.traceContext, resource.WithAttributes(semconv.ServiceName(customTracer.serviceName)))
-	if err != nil {
-		customTracer.logger.LogError("could not set service name for tracing", err)
-		return nil
-	}
-
-	exporter, err := otlptracegrpc.New(customTracer.traceContext, otlptracegrpc.WithEndpointURL("http://"+customTracer.collectorHost+":4317"), otlptracegrpc.WithInsecure())
-	if err != nil {
-		customTracer.logger.LogError("could not initialize otel exporter for tracing", err)
-		return nil
-	}
-
-	traceProvider := trace.NewTracerProvider(trace.WithResource(res), trace.WithBatcher(exporter), trace.WithSampler(customTracer.sampler))
-	customTracer.traceProvider = traceProvider
-	customTracer.exporter = exporter
+	go startConsulLoop(customTracer)
 	return customTracer
 }
 
 func (t *CustomTracer) Shutdown() {
-	t.traceProvider.Shutdown(t.traceContext)
-	t.exporter.Shutdown(t.traceContext)
+	if t.traceProvider != nil {
+		t.traceProvider.Shutdown(t.traceContext)
+	} else {
+		t.logger.LogError("could not shutdown traceprovider", errors.New("trace provider is nil"))
+	}
+	if t.exporter != nil {
+		t.exporter.Shutdown(t.traceContext)
+	} else {
+		t.logger.LogError("could not shutdown exporter", errors.New("exporter is nil"))
+	}
+}
+
+func startConsulLoop(tracer *CustomTracer) {
+	tracer.logger.LogDebug("Started consul Loop for tracing")
+	for {
+		var tracingKey = tracer.consulKVStore.GetValue("EnableTracing")
+		var isTracingEnabled bool
+		if err := json.Unmarshal(tracingKey, &isTracingEnabled); err != nil {
+			tracer.logger.LogError("Could not parse tracing config for key "+string(tracingKey), err)
+		}
+		err := tracer.initTracerProvider(isTracingEnabled)
+		if err != nil {
+			tracer.logger.LogError("error while initializing tracer provider", err)
+		}
+		otel.SetTracerProvider(tracer.traceProvider)
+		otel.SetTextMapPropagator(tracer.propagator)
+		time.Sleep(30 * time.Second)
+	}
 }
