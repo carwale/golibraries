@@ -140,6 +140,7 @@ func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 		customTracer.logger.LogError("cannot enable tracing, as service is not inside kubernetes", errors.New("cannot enable tracing service not inside kubernetes"))
 		return nil
 	}
+	otel.SetTextMapPropagator(customTracer.propagator)
 	go startConsulLoop(customTracer)
 	return customTracer
 }
@@ -169,8 +170,6 @@ func startConsulLoop(tracer *CustomTracer) {
 		if err != nil {
 			tracer.logger.LogError("error while initializing tracer provider", err)
 		}
-		// otel.SetTracerProvider(tracer.traceProvider)
-		otel.SetTextMapPropagator(tracer.propagator)
 		time.Sleep(30 * time.Second)
 	}
 }

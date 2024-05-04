@@ -1,11 +1,13 @@
 package gotracer
 
 import (
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 func (customTracer *CustomTracer) initExporter() (*otlptrace.Exporter, error) {
@@ -38,14 +40,14 @@ func (customTracer *CustomTracer) initTracerProvider(enabled bool) error {
 		return err
 	}
 	if enabled {
-		customTracer.sampler = trace.AlwaysSample()
 		provider := trace.NewTracerProvider(trace.WithResource(res), trace.WithBatcher(exporter), trace.WithSampler(customTracer.sampler))
+		otel.SetTracerProvider(provider)
 		customTracer.traceProvider = provider
 		customTracer.logger.LogInfo("tracing enabled")
 	} else {
-		customTracer.sampler = trace.NeverSample()
-		provider := trace.NewTracerProvider(trace.WithSampler(customTracer.sampler))
-		customTracer.traceProvider = provider
+		provider := noop.NewTracerProvider()
+		otel.SetTracerProvider(provider)
+		customTracer.traceProvider = nil
 		customTracer.logger.LogInfo("tracing disabled")
 	}
 	return nil
