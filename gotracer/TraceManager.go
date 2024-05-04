@@ -169,7 +169,7 @@ func startConsulLoop(tracer *CustomTracer) {
 		if err != nil {
 			tracer.logger.LogError("error while initializing tracer provider", err)
 		}
-		otel.SetTracerProvider(tracer.traceProvider)
+		// otel.SetTracerProvider(tracer.traceProvider)
 		otel.SetTextMapPropagator(tracer.propagator)
 		time.Sleep(30 * time.Second)
 	}
