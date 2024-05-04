@@ -119,10 +119,6 @@ func SetOtelExporter(exporter *otlptrace.Exporter) Option {
 	}
 }
 
-func (c *CustomTracer) GetTraceProvider() *trace.TracerProvider {
-	return c.traceProvider
-}
-
 func (c *CustomTracer) GetTextMapPropagator() propagation.TextMapPropagator {
 	return c.propagator
 }
@@ -146,7 +142,7 @@ func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 }
 
 func (t *CustomTracer) Shutdown() {
-	if t.traceProvider != nil {
+	if t.traceProvider.TracerProvider != nil {
 		t.traceProvider.Shutdown(t.traceContext)
 	} else {
 		t.logger.LogError("could not shutdown traceprovider", errors.New("trace provider is nil"))

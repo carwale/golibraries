@@ -1,6 +1,7 @@
 package gotracer
 
 import (
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
@@ -42,12 +43,12 @@ func (customTracer *CustomTracer) initTracerProvider(enabled bool) error {
 	if enabled {
 		provider := trace.NewTracerProvider(trace.WithResource(res), trace.WithBatcher(exporter), trace.WithSampler(customTracer.sampler))
 		otel.SetTracerProvider(provider)
-		customTracer.traceProvider = provider
+		otelgrpc.WithTracerProvider(provider)
 		customTracer.logger.LogInfo("tracing enabled")
 	} else {
 		provider := noop.NewTracerProvider()
 		otel.SetTracerProvider(provider)
-		customTracer.traceProvider = nil
+		otelgrpc.WithTracerProvider(provider)
 		customTracer.logger.LogInfo("tracing disabled")
 	}
 	return nil
