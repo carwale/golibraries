@@ -2,13 +2,9 @@ package gotracer
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"time"
 
-	kvStore "github.com/carwale/golibraries/consulagent"
 	"github.com/carwale/golibraries/gologger"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -26,23 +22,12 @@ type CustomTracer struct {
 	propagator     propagation.TextMapPropagator
 	exporter       *otlptrace.Exporter
 	resource       *resource.Resource
-	consulKVStore  *kvStore.ConsulAgent
 }
 
 type Option func(t *CustomTracer)
 
 func SetLogger(logger *gologger.CustomLogger) Option {
 	return func(t *CustomTracer) { t.logger = logger }
-}
-
-func SetConsulKVStore(consulKVStore *kvStore.ConsulAgent) Option {
-	return func(t *CustomTracer) {
-		if consulKVStore == nil {
-			t.logger.LogError("consul kv store cannot be nil", errors.New("InvalidArgument: consul kv store cannot be nil"))
-		} else {
-			t.consulKVStore = consulKVStore
-		}
-	}
 }
 
 func SetResource(resource *resource.Resource) Option {
@@ -136,8 +121,11 @@ func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 		customTracer.logger.LogError("cannot enable tracing, as service is not inside kubernetes", errors.New("cannot enable tracing service not inside kubernetes"))
 		return nil
 	}
-	otel.SetTextMapPropagator(customTracer.propagator)
-	go startConsulLoop(customTracer)
+	tracerProvider, err := customTracer.initTracerProvider()
+	if err != nil {
+		customTracer.logger.LogError("error occurred while initializing tracer provider", err)
+	}
+	customTracer.traceProvider = tracerProvider
 	return customTracer
 }
 
@@ -151,21 +139,5 @@ func (t *CustomTracer) Shutdown() {
 		t.exporter.Shutdown(t.traceContext)
 	} else {
 		t.logger.LogError("could not shutdown exporter", errors.New("exporter is nil"))
-	}
-}
-
-func startConsulLoop(tracer *CustomTracer) {
-	tracer.logger.LogDebug("Started consul Loop for tracing")
-	for {
-		var tracingKey = tracer.consulKVStore.GetValue("EnableTracing")
-		var isTracingEnabled bool
-		if err := json.Unmarshal(tracingKey, &isTracingEnabled); err != nil {
-			tracer.logger.LogError("Could not parse tracing config for key "+string(tracingKey), err)
-		}
-		err := tracer.initTracerProvider(isTracingEnabled)
-		if err != nil {
-			tracer.logger.LogError("error while initializing tracer provider", err)
-		}
-		time.Sleep(30 * time.Second)
 	}
 }
