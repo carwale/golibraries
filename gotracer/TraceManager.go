@@ -108,6 +108,10 @@ func (c *CustomTracer) GetTextMapPropagator() propagation.TextMapPropagator {
 	return c.propagator
 }
 
+func (c *CustomTracer) GetTracerProvider() *trace.TracerProvider {
+	return c.traceProvider
+}
+
 func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 	customTracer := &CustomTracer{
 		sampler:      trace.AlwaysSample(),
