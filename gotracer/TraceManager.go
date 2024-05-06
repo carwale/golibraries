@@ -123,17 +123,17 @@ func (c *CustomTracer) GetExporter() *otlptrace.Exporter {
 	return c.exporter
 }
 
-func (c *CustomTracer) initExporter() error {
+func (c *CustomTracer) InitExporter() (*otlptrace.Exporter, error) {
 	exporter, err := otlptracegrpc.New(c.traceContext, otlptracegrpc.WithEndpointURL("http://"+c.collectorHost+":4317"), otlptracegrpc.WithInsecure())
 	if err != nil {
 		c.logger.LogError("could not initialize otel exporter for tracing", err)
-		return err
+		return nil, err
 	}
 	c.exporter = exporter
-	return nil
+	return exporter, nil
 }
 
-func (c *CustomTracer) initResource() error {
+func (c *CustomTracer) InitResource() (*resource.Resource, error) {
 	res, err := resource.New(c.traceContext, resource.WithAttributes(
 		semconv.ServiceName(c.serviceName),
 		semconv.OTelScopeName(otelgrpc.ScopeName),
@@ -141,18 +141,18 @@ func (c *CustomTracer) initResource() error {
 	))
 	if err != nil {
 		c.logger.LogError("could not set service name for tracing", err)
-		return err
+		return nil, err
 	}
 	c.resource = res
-	return nil
+	return res, nil
 }
 
-func (c *CustomTracer) initTracerProvider() (*trace.TracerProvider, error) {
-	err := c.initResource()
+func (c *CustomTracer) InitTracerProvider() (*trace.TracerProvider, error) {
+	_, err := c.InitResource()
 	if err != nil {
 		return nil, err
 	}
-	err = c.initExporter()
+	_, err = c.InitExporter()
 	if err != nil {
 		return nil, err
 	}

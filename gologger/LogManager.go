@@ -268,11 +268,6 @@ func (l *CustomLogger) LogMessagef(message string, args ...interface{}) {
 	l.LogMessage(fmt.Sprintf(message, args...))
 }
 
-func (l *CustomLogger) logMessage(message string, level LogLevels) {
-	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q,"K8sNamespace": %q}`,
-		level.String(), time.Now().String(), l.graylogFacility, message, l.k8sNamespace)
-}
-
 func (l *CustomLogger) LogMessageWithExtras(message string, level LogLevels, pairs ...Pair) {
 	if l.logLevel >= level {
 		l.logMessageWithExtras(message, level, pairs)
