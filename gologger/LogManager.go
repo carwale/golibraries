@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc/metadata"
 	"gopkg.in/Graylog2/go-gelf.v2/gelf"
 )
 
@@ -78,6 +79,16 @@ func SetTraceContext(traceContext context.Context) Option {
 		if traceContext != nil {
 			l.traceContext = traceContext
 		}
+	}
+}
+
+func (l *CustomLogger) SetTraceContext(traceContext context.Context) {
+	if traceContext != nil {
+		md, ok := metadata.FromIncomingContext(l.traceContext)
+		if ok {
+			l.logger.Printf("Found metadata in logMessageWithExtras %v", md)
+		}
+		l.traceContext = traceContext
 	}
 }
 
@@ -278,6 +289,11 @@ func (l *CustomLogger) logMessageWithExtras(message string, level LogLevels, pai
 	pairs = append(pairs, Pair{"log_message", message})
 	pairs = append(pairs, Pair{"K8sNamespace", l.k8sNamespace})
 	var ctx context.Context = l.traceContext
+	md, ok := metadata.FromIncomingContext(l.traceContext)
+	if ok {
+		l.logger.Printf("Found metadata in logMessageWithExtras %v", md)
+	}
+
 	var span = trace.SpanFromContext(ctx)
 	if span.SpanContext().IsValid() {
 		pairs = append(pairs, Pair{"trace_id", span.SpanContext().TraceID().String()})

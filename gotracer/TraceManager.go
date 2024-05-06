@@ -5,10 +5,13 @@ import (
 	"errors"
 
 	"github.com/carwale/golibraries/gologger"
+	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	"go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
 type CustomTracer struct {
@@ -112,6 +115,52 @@ func (c *CustomTracer) GetTracerProvider() *trace.TracerProvider {
 	return c.traceProvider
 }
 
+func (c *CustomTracer) GetResource() *resource.Resource {
+	return c.resource
+}
+
+func (c *CustomTracer) GetExporter() *otlptrace.Exporter {
+	return c.exporter
+}
+
+func (customTracer *CustomTracer) initExporter() (*otlptrace.Exporter, error) {
+	exporter, err := otlptracegrpc.New(customTracer.traceContext, otlptracegrpc.WithEndpointURL("http://"+customTracer.collectorHost+":4317"), otlptracegrpc.WithInsecure())
+	if err != nil {
+		customTracer.logger.LogError("could not initialize otel exporter for tracing", err)
+		return nil, err
+	}
+	customTracer.exporter = exporter
+	return exporter, nil
+}
+
+func (customTracer *CustomTracer) initResource() (*resource.Resource, error) {
+	res, err := resource.New(customTracer.traceContext, resource.WithAttributes(
+		semconv.ServiceName(customTracer.serviceName),
+		semconv.OTelScopeName(otelgrpc.ScopeName),
+		semconv.OTelScopeVersion(otelgrpc.Version()),
+	))
+	if err != nil {
+		customTracer.logger.LogError("could not set service name for tracing", err)
+		return nil, err
+	}
+	customTracer.resource = res
+	return res, nil
+}
+
+func (customTracer *CustomTracer) initTracerProvider() (*trace.TracerProvider, error) {
+	_, err := customTracer.initResource()
+	if err != nil {
+		return nil, err
+	}
+	_, err = customTracer.initExporter()
+	if err != nil {
+		return nil, err
+	}
+	provider := trace.NewTracerProvider(trace.WithResource(customTracer.resource), trace.WithBatcher(customTracer.exporter), trace.WithSampler(customTracer.sampler))
+	customTracer.traceProvider = provider
+	return provider, nil
+}
+
 func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 	customTracer := &CustomTracer{
 		sampler:      trace.AlwaysSample(),
@@ -125,23 +174,14 @@ func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 		customTracer.logger.LogError("cannot enable tracing, as service is not inside kubernetes", errors.New("cannot enable tracing service not inside kubernetes"))
 		return nil
 	}
-	tracerProvider, err := customTracer.initTracerProvider()
-	if err != nil {
-		customTracer.logger.LogError("error occurred while initializing tracer provider", err)
-	}
-	customTracer.traceProvider = tracerProvider
 	return customTracer
 }
 
 func (t *CustomTracer) Shutdown() {
 	if t.traceProvider.TracerProvider != nil {
 		t.traceProvider.Shutdown(t.traceContext)
-	} else {
-		t.logger.LogError("could not shutdown traceprovider", errors.New("trace provider is nil"))
 	}
 	if t.exporter != nil {
 		t.exporter.Shutdown(t.traceContext)
-	} else {
-		t.logger.LogError("could not shutdown exporter", errors.New("exporter is nil"))
 	}
 }
