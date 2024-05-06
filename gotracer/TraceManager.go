@@ -123,41 +123,41 @@ func (c *CustomTracer) GetExporter() *otlptrace.Exporter {
 	return c.exporter
 }
 
-func (customTracer *CustomTracer) initExporter() (*otlptrace.Exporter, error) {
-	exporter, err := otlptracegrpc.New(customTracer.traceContext, otlptracegrpc.WithEndpointURL("http://"+customTracer.collectorHost+":4317"), otlptracegrpc.WithInsecure())
+func (c *CustomTracer) initExporter() error {
+	exporter, err := otlptracegrpc.New(c.traceContext, otlptracegrpc.WithEndpointURL("http://"+c.collectorHost+":4317"), otlptracegrpc.WithInsecure())
 	if err != nil {
-		customTracer.logger.LogError("could not initialize otel exporter for tracing", err)
-		return nil, err
+		c.logger.LogError("could not initialize otel exporter for tracing", err)
+		return err
 	}
-	customTracer.exporter = exporter
-	return exporter, nil
+	c.exporter = exporter
+	return nil
 }
 
-func (customTracer *CustomTracer) initResource() (*resource.Resource, error) {
-	res, err := resource.New(customTracer.traceContext, resource.WithAttributes(
-		semconv.ServiceName(customTracer.serviceName),
+func (c *CustomTracer) initResource() error {
+	res, err := resource.New(c.traceContext, resource.WithAttributes(
+		semconv.ServiceName(c.serviceName),
 		semconv.OTelScopeName(otelgrpc.ScopeName),
 		semconv.OTelScopeVersion(otelgrpc.Version()),
 	))
 	if err != nil {
-		customTracer.logger.LogError("could not set service name for tracing", err)
-		return nil, err
+		c.logger.LogError("could not set service name for tracing", err)
+		return err
 	}
-	customTracer.resource = res
-	return res, nil
+	c.resource = res
+	return nil
 }
 
-func (customTracer *CustomTracer) initTracerProvider() (*trace.TracerProvider, error) {
-	_, err := customTracer.initResource()
+func (c *CustomTracer) initTracerProvider() (*trace.TracerProvider, error) {
+	err := c.initResource()
 	if err != nil {
 		return nil, err
 	}
-	_, err = customTracer.initExporter()
+	err = c.initExporter()
 	if err != nil {
 		return nil, err
 	}
-	provider := trace.NewTracerProvider(trace.WithResource(customTracer.resource), trace.WithBatcher(customTracer.exporter), trace.WithSampler(customTracer.sampler))
-	customTracer.traceProvider = provider
+	provider := trace.NewTracerProvider(trace.WithResource(c.resource), trace.WithBatcher(c.exporter), trace.WithSampler(c.sampler))
+	c.traceProvider = provider
 	return provider, nil
 }
 
