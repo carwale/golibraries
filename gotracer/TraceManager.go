@@ -129,6 +129,9 @@ func (c *CustomTracer) InitExporter() (*otlptrace.Exporter, error) {
 		c.logger.LogError("could not initialize otel exporter for tracing", err)
 		return nil, err
 	}
+	if c.exporter == nil {
+		c.exporter = exporter
+	}
 	c.exporter = exporter
 	return exporter, nil
 }
@@ -143,7 +146,9 @@ func (c *CustomTracer) InitResource() (*resource.Resource, error) {
 		c.logger.LogError("could not set service name for tracing", err)
 		return nil, err
 	}
-	c.resource = res
+	if c.resource == nil {
+		c.resource = res
+	}
 	return res, nil
 }
 
@@ -178,7 +183,7 @@ func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 }
 
 func (t *CustomTracer) Shutdown() {
-	if t.traceProvider.TracerProvider != nil {
+	if t.traceProvider != nil {
 		t.traceProvider.Shutdown(t.traceContext)
 	}
 	if t.exporter != nil {
