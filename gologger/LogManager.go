@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/grpc/metadata"
 	"gopkg.in/Graylog2/go-gelf.v2/gelf"
 )
 
@@ -26,7 +25,6 @@ type CustomLogger struct {
 	isTimeLoggingEnabled  bool
 	disableGraylog        bool
 	logger                *log.Logger
-	traceContext          context.Context
 }
 
 // Pair is a tuple of strings
@@ -71,24 +69,6 @@ func SetK8sNamespace(k8sNamespace string) Option {
 		if k8sNamespace != "" {
 			l.k8sNamespace = k8sNamespace
 		}
-	}
-}
-
-func SetTraceContext(traceContext context.Context) Option {
-	return func(l *CustomLogger) {
-		if traceContext != nil {
-			l.traceContext = traceContext
-		}
-	}
-}
-
-func (l *CustomLogger) SetTraceContext(traceContext context.Context) {
-	if traceContext != nil {
-		md, ok := metadata.FromIncomingContext(l.traceContext)
-		if ok {
-			l.logger.Printf("Found metadata in logMessageWithExtras %v", md)
-		}
-		l.traceContext = traceContext
 	}
 }
 
@@ -177,12 +157,12 @@ func (l *CustomLogger) GetLogLevel() LogLevels {
 	return l.logLevel
 }
 
-// LogErrorInterface is used to send errors
+// LogErrorInterface is used to log errors
 func (l *CustomLogger) LogErrorInterface(v ...interface{}) {
 	l.logger.Output(2, fmt.Sprint(v...))
 }
 
-// LogError is used to send errors and a message along with the error
+// LogError is used to log errors and a message along with the error
 func (l *CustomLogger) LogError(str string, err error) {
 	pairs := []Pair{
 		{"log_error", err.Error()},
@@ -190,17 +170,17 @@ func (l *CustomLogger) LogError(str string, err error) {
 	l.logMessageWithExtras(str, ERROR, pairs)
 }
 
-// LogErrorWithoutError is used to send only a message and not an error
+// LogErrorWithoutError is used to log only a message and not an error
 func (l *CustomLogger) LogErrorWithoutError(str string) {
 	l.logMessageWithExtras(str, ERROR, nil)
 }
 
-// LogErrorWithoutErrorf is used to send only a message and not an error
+// LogErrorWithoutErrorf is used to log only a message and not an error
 func (l *CustomLogger) LogErrorWithoutErrorf(str string, args ...interface{}) {
 	l.LogErrorWithoutError(fmt.Sprintf(str, args...))
 }
 
-// LogErrorMessage is used to send extra fields to graylog along with the error
+// LogErrorMessage is used to log extra fields to graylog along with the error
 func (l *CustomLogger) LogErrorMessage(str string, err error, pairs ...Pair) {
 	if err != nil {
 		pairs = append(pairs, Pair{"log_error", err.Error()})
@@ -208,52 +188,52 @@ func (l *CustomLogger) LogErrorMessage(str string, err error, pairs ...Pair) {
 	l.logMessageWithExtras(str, ERROR, pairs)
 }
 
-// LogWarning is used to send warning messages
+// LogWarning is used to log warning messages
 func (l *CustomLogger) LogWarning(str string) {
 	if l.logLevel >= WARN {
 		l.logMessageWithExtras(str, WARN, nil)
 	}
 }
 
-// LogWarningf is used to send warning messages
+// LogWarningf is used to log warning messages
 func (l *CustomLogger) LogWarningf(str string, args ...interface{}) {
 	l.LogWarning(fmt.Sprintf(str, args...))
 }
 
-// LogWarningMessage is used to send warning messages along with extra fields to GrayLog
+// LogWarningMessage is used to log warning messages along with extra fields to GrayLog
 func (l *CustomLogger) LogWarningMessage(str string, pairs ...Pair) {
 	if l.logLevel >= WARN {
 		l.logMessageWithExtras(str, WARN, pairs)
 	}
 }
 
-// LogInfoMessage is used to send extra fields to graylog
+// LogInfoMessage is used to log extra fields to graylog
 func (l *CustomLogger) LogInfoMessage(str string, pairs ...Pair) {
 	if l.logLevel >= INFO {
 		l.logMessageWithExtras(str, INFO, pairs)
 	}
 }
 
-// LogInfo is used to send info messages
+// LogInfo is used to log info messages
 func (l *CustomLogger) LogInfo(str string) {
 	if l.logLevel >= INFO {
 		l.logMessageWithExtras(str, INFO, nil)
 	}
 }
 
-// LogInfof is used to send formatted info messages
+// LogInfof is used to log formatted info messages
 func (l *CustomLogger) LogInfof(str string, args ...interface{}) {
 	l.LogInfo(fmt.Sprintf(str, args...))
 }
 
-// LogDebug is used to send debug messages
+// LogDebug is used to log debug messages
 func (l *CustomLogger) LogDebug(str string) {
 	if l.logLevel >= DEBUG {
 		l.logMessageWithExtras(str, DEBUG, nil)
 	}
 }
 
-// LogDebugf is used to send debug messages
+// LogDebugf is used to log debug messages
 func (l *CustomLogger) LogDebugf(str string, args ...interface{}) {
 	l.LogDebug(fmt.Sprintf(str, args...))
 }
@@ -274,6 +254,7 @@ func (l *CustomLogger) LogMessageWithExtras(message string, level LogLevels, pai
 	}
 }
 
+// logMessageWithExtras is a generic function to format and log every type of messages
 func (l *CustomLogger) logMessageWithExtras(message string, level LogLevels, pairs []Pair) {
 	if len(pairs) == 0 {
 		pairs = make([]Pair, 0)
@@ -283,18 +264,6 @@ func (l *CustomLogger) logMessageWithExtras(message string, level LogLevels, pai
 	pairs = append(pairs, Pair{"log_facility", l.graylogFacility})
 	pairs = append(pairs, Pair{"log_message", message})
 	pairs = append(pairs, Pair{"K8sNamespace", l.k8sNamespace})
-	var ctx context.Context = l.traceContext
-	md, ok := metadata.FromIncomingContext(l.traceContext)
-	if ok {
-		l.logger.Printf("Found metadata in logMessageWithExtras %v", md)
-	}
-
-	var span = trace.SpanFromContext(ctx)
-	if span.SpanContext().IsValid() {
-		pairs = append(pairs, Pair{"trace_id", span.SpanContext().TraceID().String()})
-		pairs = append(pairs, Pair{"span_id", span.SpanContext().SpanID().String()})
-	}
-	defer span.End()
 	var buffer bytes.Buffer
 	buffer.WriteString("{")
 	for index, pair := range pairs {
@@ -328,4 +297,75 @@ func (l *CustomLogger) Toc(message string, startTime time.Time) {
 		l.logger.Printf(`{"log_timestamp": %q, "log_timetaken": %q, "log_facility": %q,"log_message": %q,"K8sNamespace": %q}`,
 			time.Now().String(), strconv.FormatInt(endTime.Sub(startTime).Nanoseconds(), 10), l.graylogFacility, message, l.k8sNamespace)
 	}
+}
+
+// logMessageWithContext is a generic function to format and log every type of messages
+// It will also add trace_id and span_id in the log if it exists in the context
+func (l *CustomLogger) logMessageWithContext(ctx context.Context, message string, level LogLevels, pairs []Pair) {
+	if ctx != nil {
+		var span = trace.SpanFromContext(ctx)
+		if span.SpanContext().IsValid() {
+			pairs = append(pairs, Pair{"trace_id", span.SpanContext().TraceID().String()})
+			pairs = append(pairs, Pair{"span_id", span.SpanContext().SpanID().String()})
+		}
+		defer span.End()
+	}
+	l.logMessageWithExtras(message, level, pairs)
+}
+
+// LogDebugWithContext is used to log debug messages.
+// It will also add trace_id and span_id in the log if it exists in the context
+func (l *CustomLogger) LogDebugWithContext(ctx context.Context, str string) {
+	if l.logLevel >= DEBUG {
+		l.logMessageWithContext(ctx, str, DEBUG, nil)
+	}
+}
+
+// LogDebugfWithContext is used to log debug messages with any interface type.
+// It will also add trace_id and span_id in the log if it exists in the context
+func (l *CustomLogger) LogDebugfWithContext(ctx context.Context, str string, args ...interface{}) {
+	l.LogDebugWithContext(ctx, fmt.Sprintf(str, args...))
+}
+
+// LogInfoWithContext is used to log info messages.
+// It will also add trace_id and span_id in the log if it exists in the context.
+func (l *CustomLogger) LogInfoWithContext(ctx context.Context, str string) {
+	if l.logLevel >= INFO {
+		l.logMessageWithContext(ctx, str, INFO, nil)
+	}
+}
+
+// LogInfofWithContext is used to log info messages with any interface type.
+// It will also add trace_id and span_id in the log if it exists in the context.
+func (l *CustomLogger) LogInfofWithContext(ctx context.Context, str string, args ...interface{}) {
+	l.LogInfoWithContext(ctx, fmt.Sprintf(str, args...))
+}
+
+// LogWarningWithContext is used to log warning messages.
+// It will also add trace_id and span_id in the log if it exists in the context.
+func (l *CustomLogger) LogWarningWithContext(ctx context.Context, str string) {
+	if l.logLevel >= WARN {
+		l.logMessageWithContext(ctx, str, WARN, nil)
+	}
+}
+
+// LogWarningfWithContext is used to log warning messages with any interface type.
+// It will also add trace_id and span_id in the log if it exists in the context.
+func (l *CustomLogger) LogWarningfWithContext(ctx context.Context, str string, args ...interface{}) {
+	l.LogWarningWithContext(ctx, fmt.Sprintf(str, args...))
+}
+
+// LogErrorWithContext is used to log errors and a message along with the error
+// It will also add trace_id and span_id in the log if it exists in the context.
+func (l *CustomLogger) LogErrorWithContext(ctx context.Context, str string, err error) {
+	pairs := []Pair{
+		{"log_error", err.Error()},
+	}
+	l.logMessageWithContext(ctx, str, ERROR, pairs)
+}
+
+// LogErrorfWithContext is used to log errors, a message and interface of any type along with the error
+// It will also add trace_id and span_id in the log if it exists in the context.
+func (l *CustomLogger) LogErrorfWithContext(ctx context.Context, str string, err error, args ...interface{}) {
+	l.LogErrorWithContext(ctx, fmt.Sprintf(str, args...), err)
 }

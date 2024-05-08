@@ -14,6 +14,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
+// CustomTracer struct holds the configuration and state for the tracing setup
 type CustomTracer struct {
 	serviceName    string
 	isInKubernetes bool
@@ -27,12 +28,15 @@ type CustomTracer struct {
 	resource       *resource.Resource
 }
 
+// Option is a function type used to set various options for the CustomTracer
 type Option func(t *CustomTracer)
 
+// SetLogger sets the logger for the CustomTracer
 func SetLogger(logger *gologger.CustomLogger) Option {
 	return func(t *CustomTracer) { t.logger = logger }
 }
 
+// SetResource sets the resource for the CustomTracer
 func SetResource(resource *resource.Resource) Option {
 	return func(t *CustomTracer) {
 		if resource == nil {
@@ -43,6 +47,7 @@ func SetResource(resource *resource.Resource) Option {
 	}
 }
 
+// SetServiceName sets the service name for the CustomTracer
 func SetServiceName(serviceName string) Option {
 	return func(t *CustomTracer) {
 		if serviceName == "" {
@@ -53,10 +58,12 @@ func SetServiceName(serviceName string) Option {
 	}
 }
 
+// SetIsInKubernetes sets the Kubernetes environment flag for the CustomTracer
 func SetIsInKubernetes(isInKubernetes bool) Option {
 	return func(t *CustomTracer) { t.isInKubernetes = isInKubernetes }
 }
 
+// SetCollectorHost sets the collector host for the CustomTracer
 func SetCollectorHost(collectorHost string) Option {
 	return func(t *CustomTracer) {
 		if collectorHost == "" {
@@ -67,6 +74,7 @@ func SetCollectorHost(collectorHost string) Option {
 	}
 }
 
+// SetTracingContext sets the tracing context for the CustomTracer
 func SetTracingContext(ctx context.Context) Option {
 	return func(t *CustomTracer) {
 		if ctx == nil {
@@ -77,6 +85,7 @@ func SetTracingContext(ctx context.Context) Option {
 	}
 }
 
+// SetSampler sets the sampler for the CustomTracer
 func SetSampler(sampler trace.Sampler) Option {
 	return func(t *CustomTracer) {
 		if sampler == nil {
@@ -87,6 +96,7 @@ func SetSampler(sampler trace.Sampler) Option {
 	}
 }
 
+// SetPropagator sets the propagator for the CustomTracer
 func SetPropagator(propagator propagation.TextMapPropagator) Option {
 	return func(t *CustomTracer) {
 		if propagator == nil {
@@ -97,6 +107,7 @@ func SetPropagator(propagator propagation.TextMapPropagator) Option {
 	}
 }
 
+// SetOtelExporter sets the OpenTelemetry exporter for the CustomTracer
 func SetOtelExporter(exporter *otlptrace.Exporter) Option {
 	return func(t *CustomTracer) {
 		if exporter == nil {
@@ -107,23 +118,32 @@ func SetOtelExporter(exporter *otlptrace.Exporter) Option {
 	}
 }
 
+// GetTextMapPropagator returns the propagator for the CustomTracer
 func (c *CustomTracer) GetTextMapPropagator() propagation.TextMapPropagator {
 	return c.propagator
 }
 
+// GetTracerProvider returns the tracer provider for the CustomTracer
 func (c *CustomTracer) GetTracerProvider() *trace.TracerProvider {
 	return c.traceProvider
 }
 
+// GetResource returns the resource for the CustomTracer
 func (c *CustomTracer) GetResource() *resource.Resource {
 	return c.resource
 }
 
+// GetExporter returns the exporter for the CustomTracer
 func (c *CustomTracer) GetExporter() *otlptrace.Exporter {
 	return c.exporter
 }
 
+// InitExporter initializes the OpenTelemetry exporter for tracing
 func (c *CustomTracer) InitExporter() (*otlptrace.Exporter, error) {
+	if c.collectorHost == "" {
+		c.logger.LogError("collector host cannot be empty for setting collector endpoint", errors.New("InvalidArgument: collector host cannot be empty"))
+		return nil, errors.New("InvalidArgument: collector host cannot be empty")
+	}
 	exporter, err := otlptracegrpc.New(c.traceContext, otlptracegrpc.WithEndpointURL("http://"+c.collectorHost+":4317"), otlptracegrpc.WithInsecure())
 	if err != nil {
 		c.logger.LogError("could not initialize otel exporter for tracing", err)
@@ -136,7 +156,12 @@ func (c *CustomTracer) InitExporter() (*otlptrace.Exporter, error) {
 	return exporter, nil
 }
 
+// InitResource initializes the OpenTelemetry resource for tracing
 func (c *CustomTracer) InitResource() (*resource.Resource, error) {
+	if c.serviceName == "" {
+		c.logger.LogError("service name cannot be empty for tracing", errors.New("InvalidArgument: service name cannot be empty"))
+		return nil, errors.New("InvalidArgument: service name cannot be empty")
+	}
 	res, err := resource.New(c.traceContext, resource.WithAttributes(
 		semconv.ServiceName(c.serviceName),
 		semconv.OTelScopeName(otelgrpc.ScopeName),
@@ -152,6 +177,7 @@ func (c *CustomTracer) InitResource() (*resource.Resource, error) {
 	return res, nil
 }
 
+// InitTracerProvider initializes the OpenTelemetry tracer provider
 func (c *CustomTracer) InitTracerProvider() (*trace.TracerProvider, error) {
 	_, err := c.InitResource()
 	if err != nil {
@@ -166,6 +192,7 @@ func (c *CustomTracer) InitTracerProvider() (*trace.TracerProvider, error) {
 	return provider, nil
 }
 
+// NewCustomTracer is the constructor for the CustomTracer struct
 func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 	customTracer := &CustomTracer{
 		sampler:      trace.AlwaysSample(),
@@ -182,6 +209,7 @@ func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 	return customTracer
 }
 
+// Shutdown shuts down the tracer provider and exporter
 func (t *CustomTracer) Shutdown() {
 	if t.traceProvider != nil {
 		t.traceProvider.Shutdown(t.traceContext)
