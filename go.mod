@@ -3,7 +3,7 @@ module github.com/carwale/golibraries
 go 1.20
 
 require (
-	github.com/bradfitz/gomemcache v0.0.0-20190913173617-a41fca850d0b
+	github.com/carwale/gomemcache v0.0.1
 	github.com/confluentinc/confluent-kafka-go v1.8.2
 	github.com/google/uuid v1.4.0
 	github.com/hashicorp/consul/api v1.1.0
@@ -27,6 +27,8 @@ require (
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/dgryski/go-jump v0.0.0-20211018200510-ba001c3ffce0 // indirect
+	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/emicklei/go-restful/v3 v3.9.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
@@ -62,6 +64,7 @@ require (
 	github.com/prometheus/common v0.9.1 // indirect
 	github.com/prometheus/procfs v0.0.8 // indirect
 	github.com/rogpeppe/go-internal v1.11.0 // indirect
+	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/afero v1.1.2 // indirect
 	github.com/spf13/cast v1.3.0 // indirect
 	github.com/spf13/jwalterweatherman v1.0.0 // indirect
