@@ -193,10 +193,12 @@ func (c *CustomTracer) InitTracerProvider() (*trace.TracerProvider, error) {
 }
 
 // NewCustomTracer is the constructor for the CustomTracer struct
+// It takes in a list of options to set various configuration options for the CustomTracer
+// By default it sets a combination of parent based and trace id based sampler with 1% sampling rate
 func NewCustomTracer(traceOptions ...Option) *CustomTracer {
 	customTracer := &CustomTracer{
-		sampler:      trace.AlwaysSample(),
-		propagator:   propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}),
+		sampler:      trace.ParentBased(trace.TraceIDRatioBased(0.01)),
+		propagator:   propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}),
 		traceContext: context.Background(),
 	}
 	for _, option := range traceOptions {
