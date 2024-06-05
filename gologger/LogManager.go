@@ -243,6 +243,12 @@ func (l *CustomLogger) LogMessage(message string) {
 	l.logger.Printf(message)
 }
 
+// logMessage is used to log message with any log level
+func (l *CustomLogger) logMessage(message string, level LogLevels) {
+	l.logger.Printf(`{"log_level": %q, "log_timestamp": %q, "log_facility": %q,"log_message": %q,"K8sNamespace": %q}`,
+		level.String(), time.Now().String(), l.graylogFacility, message, l.k8sNamespace)
+}
+
 // LogMessagef is used to log plain message
 func (l *CustomLogger) LogMessagef(message string, args ...interface{}) {
 	l.LogMessage(fmt.Sprintf(message, args...))
