@@ -41,10 +41,10 @@ func RandomUint64() uint64 {
 func RandomString(strlen int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
 	result := ""
+	mut.Lock()
+	defer mut.Unlock()
 	for i := 0; i < strlen; i++ {
-		mut.Lock()
 		index := r1.Intn(len(chars))
-		mut.Unlock()
 		result += chars[index : index+1]
 	}
 	return result
