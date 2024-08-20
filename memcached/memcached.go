@@ -80,11 +80,11 @@ func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (i
 		if err == memcache.ErrCacheMiss {
 			value, err := dbCallBack()
 			if err != nil {
-				return nil, err
+				return value, err
 			}
 			_, err = c.AddItem(key, value, expiration)
 			if err != nil {
-				return nil, err
+				return value, err
 			}
 			return value, nil
 		}
@@ -92,7 +92,7 @@ func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (i
 	}
 	res, err := BytesToEmptyInterface(item.Value)
 	if err != nil {
-		return nil, err
+		return res, err
 	}
 	return res, nil
 }
