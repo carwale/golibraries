@@ -313,6 +313,7 @@ func (l *CustomLogger) logMessageWithContext(ctx context.Context, message string
 		if span.SpanContext().IsValid() {
 			pairs = append(pairs, Pair{"trace_id", span.SpanContext().TraceID().String()})
 			pairs = append(pairs, Pair{"span_id", span.SpanContext().SpanID().String()})
+			pairs = append(pairs, Pair{"is_trace_sampled", strconv.FormatBool(span.SpanContext().IsSampled())})
 		}
 		defer span.End()
 	}
