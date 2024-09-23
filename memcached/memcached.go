@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"strings"
 
 	"github.com/carwale/gomemcache/memcache"
 )
@@ -87,6 +88,9 @@ func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (i
 				return value, err
 			}
 			return value, nil
+		} else if strings.HasSuffix(err.Error(), "connection refused") {
+			// handle memcache being down
+			return dbCallBack()
 		}
 		return nil, err
 	}
