@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 
+	"github.com/carwale/golibraries/gologger"
 	"github.com/carwale/gomemcache/memcache"
 )
 
@@ -67,6 +68,12 @@ func NewMemCachedClient(serverList []string) (*CacheClient, error) {
 	return c, nil
 }
 
+var cacheLogger *gologger.CustomLogger
+
+func SetLogger(logger *gologger.CustomLogger) {
+	cacheLogger = logger
+}
+
 // GetItem takes in the key, expiration and a dbCallBack function.
 // If a cache miss occurs, the dbCallBack function is called which retrieves data from the database.
 // This value from the database is saved back to memcache.
@@ -77,18 +84,18 @@ func NewMemCachedClient(serverList []string) (*CacheClient, error) {
 func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (interface{}, error)) (interface{}, error) {
 	item, err := c.client.Get(key)
 	if err != nil {
-		if err == memcache.ErrCacheMiss {
-			value, err := dbCallBack()
-			if err != nil {
-				return value, err
-			}
-			_, err = c.AddItem(key, value, expiration)
-			if err != nil {
-				return value, err
-			}
-			return value, nil
+		if err != memcache.ErrCacheMiss {
+			cacheLogger.LogError("Failed to get item from memcache.", err)
 		}
-		return nil, err
+		value, err := dbCallBack()
+		if err != nil {
+			return value, err
+		}
+		_, err = c.AddItem(key, value, expiration)
+		if err != nil {
+			cacheLogger.LogError("Error occurred while adding item to cache.", err)
+		}
+		return value, nil
 	}
 	res, err := BytesToEmptyInterface(item.Value)
 	if err != nil {
@@ -122,15 +129,29 @@ func (c *CacheClient) AddItem(key string, value interface{}, expiration int32) (
 func (c *CacheClient) UpdateItem(key string, value interface{}, expiration int32, addIfNotExists bool) (bool, error) {
 	item, err := CreateMemCacheObject(key, value, expiration)
 	if err != nil {
-		return false, err
+		cacheLogger.LogError("Error occurred while updating item in cache.", err)
+		return false, nil
 	}
-	err = c.client.Replace(item)
+	isExists, errKey := c.DoesKeyExist(key)
+	if errKey != nil {
+		cacheLogger.LogError("Key not found in cache.", errKey)
+		return false, nil
+	}
+	if isExists {
+		err = c.client.Replace(item)
+	} else {
+		if addIfNotExists {
+			val, err := c.AddItem(key, value, expiration)
+			if err != nil {
+				cacheLogger.LogError("Error occurred while updating item in cache.", err)
+			}
+			return val, nil
+		}
+	}
 	if err != nil {
 		//unable to find key in cache
-		if addIfNotExists {
-			return c.AddItem(key, value, expiration)
-		}
-		return false, err
+		cacheLogger.LogError("Error occurred while updating item in cache.", err)
+		return false, nil
 	}
 	return true, nil
 }
