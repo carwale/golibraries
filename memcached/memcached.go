@@ -5,12 +5,14 @@ import (
 	"encoding/gob"
 	"fmt"
 
+	"github.com/carwale/golibraries/gologger"
 	"github.com/carwale/gomemcache/memcache"
 )
 
 // CacheClient is used to add,update,remove items from memcache
 type CacheClient struct {
 	client *memcache.Client
+	logger *gologger.CustomLogger
 }
 
 // GetBytes converts interface{} to a byte array
@@ -63,6 +65,7 @@ func NewMemCachedClient(serverList []string) (*CacheClient, error) {
 	}
 	c := &CacheClient{
 		client: memCacheClient,
+		logger: gologger.NewLogger(),
 	}
 	return c, nil
 }
@@ -83,7 +86,7 @@ func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (i
 		}
 		_, err = c.AddItem(key, value, expiration)
 		if err != nil {
-			return value, err
+			c.logger.LogError("Error occurred while adding item to cache.", err)
 		}
 		return value, nil
 	}
