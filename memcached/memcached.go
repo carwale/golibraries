@@ -80,6 +80,9 @@ func NewMemCachedClient(serverList []string) (*CacheClient, error) {
 func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (interface{}, error)) (interface{}, error) {
 	item, err := c.client.Get(key)
 	if err != nil {
+		if err != memcache.ErrCacheMiss {
+			c.logger.LogError("Failed to get item from memcache.", err)
+		}
 		value, err := dbCallBack()
 		if err != nil {
 			return value, err
@@ -125,9 +128,14 @@ func (c *CacheClient) UpdateItem(key string, value interface{}, expiration int32
 		c.logger.LogError("Error occurred while updating item in cache.", err)
 		return false, nil
 	}
-	err = c.client.Replace(item)
-	if err != nil {
-		//unable to find key in cache
+	isExists, errKey := c.DoesKeyExist(key)
+	if errKey != nil {
+		c.logger.LogError("Key not found in cache.", err)
+		return false, nil
+	}
+	if isExists {
+		err = c.client.Replace(item)
+	} else {
 		if addIfNotExists {
 			val, err := c.AddItem(key, value, expiration)
 			if err != nil {
@@ -135,6 +143,9 @@ func (c *CacheClient) UpdateItem(key string, value interface{}, expiration int32
 			}
 			return val, nil
 		}
+	}
+	if err != nil {
+		//unable to find key in cache
 		c.logger.LogError("Error occurred while updating item in cache.", err)
 		return false, nil
 	}
