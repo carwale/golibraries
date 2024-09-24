@@ -122,14 +122,20 @@ func (c *CacheClient) AddItem(key string, value interface{}, expiration int32) (
 func (c *CacheClient) UpdateItem(key string, value interface{}, expiration int32, addIfNotExists bool) (bool, error) {
 	item, err := CreateMemCacheObject(key, value, expiration)
 	if err != nil {
+		c.logger.LogError("Error occurred while updating item in cache.", err)
 		return false, nil
 	}
 	err = c.client.Replace(item)
 	if err != nil {
 		//unable to find key in cache
 		if addIfNotExists {
-			return c.AddItem(key, value, expiration)
+			val, err := c.AddItem(key, value, expiration)
+			if err != nil {
+				c.logger.LogError("Error occurred while updating item in cache.", err)
+			}
+			return val, nil
 		}
+		c.logger.LogError("Error occurred while updating item in cache.", err)
 		return false, nil
 	}
 	return true, nil
