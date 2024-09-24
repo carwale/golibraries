@@ -57,7 +57,7 @@ func CreateMemCacheObject(key string, value interface{}, expiration int32) (*mem
 
 // NewMemCachedClient returns a connected client server to cache to.
 // It returns the *CacheClient object if successful, else returns (nil,err)
-func NewMemCachedClient(serverList []string) (*CacheClient, error) {
+func NewMemCachedClient(serverList []string, logger *gologger.CustomLogger) (*CacheClient, error) {
 	memCacheClient := memcache.New(serverList...)
 	err := memCacheClient.Ping()
 	if err != nil {
@@ -65,9 +65,15 @@ func NewMemCachedClient(serverList []string) (*CacheClient, error) {
 	}
 	c := &CacheClient{
 		client: memCacheClient,
-		logger: gologger.NewLogger(),
+		logger: logger,
 	}
 	return c, nil
+}
+
+type Option func(c *CacheClient)
+
+func SetLogger(logger *gologger.CustomLogger) Option {
+	return func(c *CacheClient) { c.logger = logger }
 }
 
 // GetItem takes in the key, expiration and a dbCallBack function.
