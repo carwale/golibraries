@@ -77,18 +77,15 @@ func NewMemCachedClient(serverList []string) (*CacheClient, error) {
 func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (interface{}, error)) (interface{}, error) {
 	item, err := c.client.Get(key)
 	if err != nil {
-		if err == memcache.ErrCacheMiss {
-			value, err := dbCallBack()
-			if err != nil {
-				return value, err
-			}
-			_, err = c.AddItem(key, value, expiration)
-			if err != nil {
-				return value, err
-			}
-			return value, nil
+		value, err := dbCallBack()
+		if err != nil {
+			return value, err
 		}
-		return nil, err
+		_, err = c.AddItem(key, value, expiration)
+		if err != nil {
+			return value, err
+		}
+		return value, nil
 	}
 	res, err := BytesToEmptyInterface(item.Value)
 	if err != nil {
@@ -122,7 +119,7 @@ func (c *CacheClient) AddItem(key string, value interface{}, expiration int32) (
 func (c *CacheClient) UpdateItem(key string, value interface{}, expiration int32, addIfNotExists bool) (bool, error) {
 	item, err := CreateMemCacheObject(key, value, expiration)
 	if err != nil {
-		return false, err
+		return false, nil
 	}
 	err = c.client.Replace(item)
 	if err != nil {
@@ -130,7 +127,7 @@ func (c *CacheClient) UpdateItem(key string, value interface{}, expiration int32
 		if addIfNotExists {
 			return c.AddItem(key, value, expiration)
 		}
-		return false, err
+		return false, nil
 	}
 	return true, nil
 }
