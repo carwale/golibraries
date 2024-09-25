@@ -65,6 +65,7 @@ func NewMemCachedClient(serverList []string) (*CacheClient, error) {
 	}
 	c := &CacheClient{
 		client: memCacheClient,
+		logger: gologger.NewLogger(),
 	}
 	return c, nil
 }
