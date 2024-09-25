@@ -12,6 +12,7 @@ import (
 // CacheClient is used to add,update,remove items from memcache
 type CacheClient struct {
 	client *memcache.Client
+	logger *gologger.CustomLogger
 }
 
 // GetBytes converts interface{} to a byte array
@@ -68,10 +69,8 @@ func NewMemCachedClient(serverList []string) (*CacheClient, error) {
 	return c, nil
 }
 
-var cacheLogger *gologger.CustomLogger
-
-func SetLogger(logger *gologger.CustomLogger) {
-	cacheLogger = logger
+func (c *CacheClient) SetLogger(logger *gologger.CustomLogger) {
+	c.logger = logger
 }
 
 // GetItem takes in the key, expiration and a dbCallBack function.
@@ -85,7 +84,7 @@ func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (i
 	item, err := c.client.Get(key)
 	if err != nil {
 		if err != memcache.ErrCacheMiss {
-			cacheLogger.LogError("Failed to get item from memcache.", err)
+			c.logger.LogError("Failed to get item from memcache.", err)
 		}
 		value, err := dbCallBack()
 		if err != nil {
@@ -93,7 +92,7 @@ func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (i
 		}
 		_, err = c.AddItem(key, value, expiration)
 		if err != nil {
-			cacheLogger.LogError("Error occurred while adding item to cache.", err)
+			c.logger.LogError("Error occurred while adding item to cache.", err)
 		}
 		return value, nil
 	}
@@ -129,12 +128,12 @@ func (c *CacheClient) AddItem(key string, value interface{}, expiration int32) (
 func (c *CacheClient) UpdateItem(key string, value interface{}, expiration int32, addIfNotExists bool) (bool, error) {
 	item, err := CreateMemCacheObject(key, value, expiration)
 	if err != nil {
-		cacheLogger.LogError("Error occurred while updating item in cache.", err)
+		c.logger.LogError("Error occurred while updating item in cache.", err)
 		return false, nil
 	}
 	isExists, errKey := c.DoesKeyExist(key)
 	if errKey != nil {
-		cacheLogger.LogError("Key not found in cache.", errKey)
+		c.logger.LogError("Key not found in cache.", errKey)
 		return false, nil
 	}
 	if isExists {
@@ -143,14 +142,14 @@ func (c *CacheClient) UpdateItem(key string, value interface{}, expiration int32
 		if addIfNotExists {
 			val, err := c.AddItem(key, value, expiration)
 			if err != nil {
-				cacheLogger.LogError("Error occurred while updating item in cache.", err)
+				c.logger.LogError("Error occurred while updating item in cache.", err)
 			}
 			return val, nil
 		}
 	}
 	if err != nil {
 		//unable to find key in cache
-		cacheLogger.LogError("Error occurred while updating item in cache.", err)
+		c.logger.LogError("Error occurred while updating item in cache.", err)
 		return false, nil
 	}
 	return true, nil
