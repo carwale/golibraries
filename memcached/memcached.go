@@ -88,6 +88,7 @@ func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (i
 			c.logger.LogError("Failed to get item from memcache.", err)
 		}
 		value, err := dbCallBack()
+		c.logger.LogWarningf("Value is : %v", value)
 		if err != nil {
 			return value, err
 		}
