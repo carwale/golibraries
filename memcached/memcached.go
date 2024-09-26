@@ -95,6 +95,7 @@ func (c *CacheClient) GetItem(key string, expiration int32, dbCallBack func() (i
 		_, err = c.AddItem(key, value, expiration)
 		if err != nil {
 			c.logger.LogError("Error occurred while adding item to cache.", err)
+			return value, err
 		}
 		return value, nil
 	}
