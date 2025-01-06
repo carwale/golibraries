@@ -187,7 +187,7 @@ func (c *CustomTracer) InitTracerProvider() (*trace.TracerProvider, error) {
 	if err != nil {
 		return nil, err
 	}
-	provider := trace.NewTracerProvider(trace.WithResource(c.resource), trace.WithBatcher(c.exporter), trace.WithSampler(c.sampler))
+	provider := trace.NewTracerProvider(trace.WithResource(c.resource), trace.WithBatcher(c.exporter, trace.WithMaxExportBatchSize(1)), trace.WithSampler(c.sampler))
 	c.traceProvider = provider
 	return provider, nil
 }
