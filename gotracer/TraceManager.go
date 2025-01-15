@@ -179,6 +179,9 @@ func (c *CustomTracer) InitResource() (*resource.Resource, error) {
 
 // InitTracerProvider initializes the OpenTelemetry tracer provider
 func (c *CustomTracer) InitTracerProvider() (*trace.TracerProvider, error) {
+	if c.traceProvider != nil {
+		return c.traceProvider, nil
+	}
 	_, err := c.InitResource()
 	if err != nil {
 		return nil, err
@@ -219,4 +222,5 @@ func (t *CustomTracer) Shutdown() {
 	if t.exporter != nil {
 		t.exporter.Shutdown(t.traceContext)
 	}
+	t.traceProvider = nil
 }
