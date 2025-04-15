@@ -21,6 +21,7 @@ type GlobalParameters struct {
 	serviceName            string
 	consulIP               string
 	isMonitoringLogEnabled bool
+	statusLevel            int
 }
 
 // Options sets a variable of GlobalParameters
@@ -67,10 +68,16 @@ func SetConsulIP(consultIP string) Options {
 	return func(al *GlobalParameters) { al.consulIP = consultIP }
 }
 
+// SetStatusLevel (mandatory) default value is 400, i.e logs reponse whose status is 400 or greater
+func SetStatusLevel(statusLevel int) Options {
+	return func(al *GlobalParameters) { al.statusLevel = statusLevel }
+}
+
 func setDefaultConfig(serviceName string) *GlobalParameters {
 	return &GlobalParameters{
 		consulIP:    "127.0.0.1:8500",
 		serviceName: serviceName,
+		statusLevel: 400,
 	}
 }
 
@@ -114,7 +121,7 @@ func checkHTTPLogStatus(key string) {
 }
 
 func logHTTPLogs(r *http.Request, statusCode int, size int) {
-	if !_gLogConfig.isMonitoringLogEnabled && statusCode < 400 {
+	if !_gLogConfig.isMonitoringLogEnabled && statusCode < _gLogConfig.statusLevel {
 		return
 	}
 
