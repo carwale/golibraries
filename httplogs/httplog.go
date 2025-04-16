@@ -140,6 +140,7 @@ func logHTTPLogs(r *http.Request, statusCode int, size int) {
 		{Key: "http_referer", Value: r.Referer()},
 		{Key: "server_protocol", Value: r.Proto},
 		{Key: "requestuid", Value: getTraceRootID(amznTraceID)},
+		{Key: "type", Value: "access_logs"},
 	}
 
 	var buffer bytes.Buffer
