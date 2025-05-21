@@ -3,7 +3,7 @@ module github.com/carwale/golibraries
 go 1.20
 
 require (
-	github.com/carwale/gomemcache v1.1.0
+	github.com/carwale/gomemcache v1.1.1
 	github.com/confluentinc/confluent-kafka-go v1.8.2
 	github.com/google/uuid v1.4.0
 	github.com/hashicorp/consul/api v1.1.0
