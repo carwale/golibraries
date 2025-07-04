@@ -1,6 +1,8 @@
 module github.com/carwale/golibraries
 
-go 1.20
+go 1.23.0
+
+toolchain go1.23.10
 
 require (
 	github.com/carwale/gomemcache v1.1.1
