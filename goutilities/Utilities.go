@@ -4,40 +4,45 @@ import (
 	"math/rand"
 	"net"
 	"os"
+	"sync"
 	"time"
 )
 
 var r1 *rand.Rand
+
+var mut sync.Mutex
 
 func init() {
 	s1 := rand.NewSource(time.Now().UnixNano())
 	r1 = rand.New(s1)
 }
 
-//RandomIntBetween gives a randon integer between two numbers
+// RandomIntBetween gives a randon integer between two numbers
 func RandomIntBetween(a int, b int) int {
 	return r1.Intn(b-a) + a
 }
 
-//RandomInt gives a random int less than the number provided
+// RandomInt gives a random int less than the number provided
 func RandomInt(n int) int {
 	return r1.Intn(n)
 }
 
-//RandomInt64 gives a 64bit random number
+// RandomInt64 gives a 64bit random number
 func RandomInt64() int64 {
 	return r1.Int63()
 }
 
-//RandomUint64 gives an unsigned 64 bit random number
+// RandomUint64 gives an unsigned 64 bit random number
 func RandomUint64() uint64 {
 	return uint64(rand.Uint32())<<32 + uint64(rand.Uint32())
 }
 
-//RandomString gives a random string of length = parameter
+// RandomString gives a random string of length = parameter
 func RandomString(strlen int) string {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
 	result := ""
+	mut.Lock()
+	defer mut.Unlock()
 	for i := 0; i < strlen; i++ {
 		index := r1.Intn(len(chars))
 		result += chars[index : index+1]
@@ -45,7 +50,7 @@ func RandomString(strlen int) string {
 	return result
 }
 
-//RemoveDuplicates removes duplicates from the slice. It returns a new slice
+// RemoveDuplicates removes duplicates from the slice. It returns a new slice
 func RemoveDuplicates(a []string) []string {
 	result := []string{}
 	seen := map[string]string{}
