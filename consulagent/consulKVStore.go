@@ -9,7 +9,7 @@ import (
 	"github.com/hashicorp/consul/api"
 )
 
-//ConsulAgent holds a singleton consul agent and a logger
+// ConsulAgent holds a singleton consul agent and a logger
 type ConsulAgent struct {
 	consulHostName   string
 	consulPortNumber int
@@ -17,10 +17,18 @@ type ConsulAgent struct {
 	logger           *gologger.CustomLogger
 }
 
+type IConsulAgent interface {
+	GetKeys(prefix string) []string
+	GetKeyValuePairs(prefix string) map[string][]byte
+	GetValue(key string) []byte
+	CreateKV(key string, value interface{}) bool
+	DeleteKV(key string) bool
+}
+
 // Options sets a parameter for consul agent
 type Options func(c *ConsulAgent)
 
-//ConsulHost sets the IP for consul agent. Defults to 127.0.0.1
+// ConsulHost sets the IP for consul agent. Defults to 127.0.0.1
 func ConsulHost(hostName string) Options {
 	return func(c *ConsulAgent) {
 		if hostName != "" {
@@ -38,14 +46,14 @@ func ConsulPort(portNumber int) Options {
 	}
 }
 
-//Logger sets the logger for consul
-//Defaults to consul logger
+// Logger sets the logger for consul
+// Defaults to consul logger
 func Logger(customLogger *gologger.CustomLogger) Options {
 	return func(c *ConsulAgent) { c.logger = customLogger }
 }
 
-//NewConsulAgent will initialize consul client.
-func NewConsulAgent(options ...Options) *ConsulAgent {
+// NewConsulAgent will initialize consul client.
+func NewConsulAgent(options ...Options) IConsulAgent {
 
 	c := &ConsulAgent{
 		consulHostName:   "127.0.0.1",
@@ -97,7 +105,7 @@ func (ca *ConsulAgent) GetValue(key string) []byte {
 		ca.logger.LogError("Error getting value for key "+key, err)
 		return nil
 	}
-	
+
 	if pair == nil {
 		return nil
 	}
