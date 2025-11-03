@@ -30,15 +30,15 @@ func (msg *CounterMetric) SetValue(count int64, labels ...string) {
 	msg.logger.LogWarning("Cannot reset counters")
 }
 
-//RemoveLogging will stop logging for specific labels
+// RemoveLogging will stop logging for specific labels
 func (msg *CounterMetric) RemoveLogging(labels ...string) {
 	ok := msg.counter.DeleteLabelValues(labels...)
 	if !ok {
-		msg.logger.LogErrorWithoutErrorf("Could not delete metric with labels ", labels)
+		msg.logger.LogErrorWithoutErrorf("Could not delete metric with labels %v", labels)
 	}
 }
 
-//NewCounterMetric creates a new histrogram message and registers it to prometheus
+// NewCounterMetric creates a new histrogram message and registers it to prometheus
 func NewCounterMetric(counter *prometheus.CounterVec, logger *CustomLogger) *CounterMetric {
 	msg := &CounterMetric{counter, logger}
 	prometheus.MustRegister(counter)

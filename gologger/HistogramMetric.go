@@ -30,15 +30,15 @@ func (msg *HistogramMetric) SetValue(count int64, labels ...string) {
 	msg.logger.LogWarning("Cannot use SetValue for histogram metric")
 }
 
-//RemoveLogging will stop logging for specific labels
+// RemoveLogging will stop logging for specific labels
 func (msg *HistogramMetric) RemoveLogging(labels ...string) {
 	ok := msg.histogram.DeleteLabelValues(labels...)
 	if !ok {
-		msg.logger.LogErrorWithoutErrorf("Could not delete metric with labels ", labels)
+		msg.logger.LogErrorWithoutErrorf("Could not delete metric with labels %v", labels)
 	}
 }
 
-//NewHistogramMetric creates a new histrogram message and registers it to prometheus
+// NewHistogramMetric creates a new histrogram message and registers it to prometheus
 func NewHistogramMetric(hist *prometheus.HistogramVec, logger *CustomLogger) *HistogramMetric {
 	msg := &HistogramMetric{hist, logger}
 	prometheus.MustRegister(hist)

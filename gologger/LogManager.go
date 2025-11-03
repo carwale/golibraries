@@ -27,6 +27,9 @@ type CustomLogger struct {
 	logger                *log.Logger
 }
 
+// Ensure CustomLogger implements ILogger interface
+var _ ILogger = (*CustomLogger)(nil)
+
 // Pair is a tuple of strings
 type Pair struct {
 	Key, Value string

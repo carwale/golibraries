@@ -28,3 +28,6 @@ type IMetricVec interface {
 	// Method to Remove the label from the metric
 	RemoveLogging(...string)
 }
+
+type ICustomLogger interface {
+}
