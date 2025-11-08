@@ -1,13 +1,13 @@
 package httplogs
 
 import (
+	"github.com/google/uuid"
 	"net"
 	"net/http"
-	"github.com/google/uuid"
 	"strings"
 )
 
-func getValueFromConsulByKey(key string) string {	
+func getValueFromConsulByKey(key string) string {
 	return string(_gLogConfig.consulAgent.GetValue(key))
 }
 
@@ -38,9 +38,9 @@ func getTraceRootID(trace string) string {
 	}
 
 	var strList = strings.Split(trace, ";")
-	for _,str := range strList {
+	for _, str := range strList {
 		if strings.HasPrefix(str, "Root") {
-			return strings.Split(str, "=")[1];
+			return strings.Split(str, "=")[1]
 		}
 	}
 

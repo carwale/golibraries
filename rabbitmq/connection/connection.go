@@ -13,10 +13,10 @@ import (
 type Provider struct {
 }
 
-var uclogger *gologger.CustomLogger
+var uclogger gologger.ILogger
 
 // NewConnection provides a new rabbitmq connection, retries for up to 30 minutes in case of failure
-func (provider *Provider) NewConnection(server string, username string, password string, logger *gologger.CustomLogger) (*amqp.Connection, error) {
+func (provider *Provider) NewConnection(server string, username string, password string, logger gologger.ILogger) (*amqp.Connection, error) {
 	var connection *amqp.Connection
 
 	var err error

@@ -14,7 +14,7 @@ type ConsulAgent struct {
 	consulHostName   string
 	consulPortNumber int
 	consulAgent      *api.Client
-	logger           *gologger.CustomLogger
+	logger           gologger.ILogger
 }
 
 type IConsulAgent interface {
@@ -48,7 +48,7 @@ func ConsulPort(portNumber int) Options {
 
 // Logger sets the logger for consul
 // Defaults to consul logger
-func Logger(customLogger *gologger.CustomLogger) Options {
+func Logger(customLogger gologger.ILogger) Options {
 	return func(c *ConsulAgent) { c.logger = customLogger }
 }
 
@@ -58,7 +58,7 @@ func NewConsulAgent(options ...Options) IConsulAgent {
 	c := &ConsulAgent{
 		consulHostName:   "127.0.0.1",
 		consulPortNumber: 8500,
-		logger:           gologger.NewLogger(),
+		logger:           gologger.NewLoggerFactory().CreateZerologLogger(),
 	}
 
 	for _, option := range options {

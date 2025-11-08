@@ -7,7 +7,7 @@ import (
 // GaugeMetric : Default Gauge message type implementing IMetricVec
 type GaugeMetric struct {
 	gauge  *prometheus.GaugeVec
-	logger *CustomLogger
+	logger ILogger
 }
 
 // UpdateTime is a do nothing operation for counter metric
@@ -39,7 +39,7 @@ func (msg *GaugeMetric) RemoveLogging(labels ...string) {
 }
 
 // NewGaugeMetric creates a new gauge message and registers it to prometheus
-func NewGaugeMetric(counter *prometheus.GaugeVec, logger *CustomLogger) *GaugeMetric {
+func NewGaugeMetric(counter *prometheus.GaugeVec, logger ILogger) *GaugeMetric {
 	msg := &GaugeMetric{counter, logger}
 	prometheus.MustRegister(counter)
 	return msg

@@ -11,7 +11,7 @@ import (
 func TestProvider_NewConnection(t *testing.T) {
 
 	type args struct {
-		server string
+		server   string
 		username string
 		password string
 	}

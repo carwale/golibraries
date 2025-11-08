@@ -18,17 +18,17 @@ var channelPro *ChannelProvider
 
 // ChannelProvider is container for logger and connection pool, has method to get channel.
 type ChannelProvider struct {
-	uclogger *gologger.CustomLogger
+	uclogger gologger.ILogger
 	pool     *connectionpool.Pool
 }
 
-//NewChannelProvider gives you a new channel provider. It takes the list of servers from "rabbitmq" in config
-func NewChannelProvider(logger *gologger.CustomLogger, username string, password string) *ChannelProvider {
+// NewChannelProvider gives you a new channel provider. It takes the list of servers from "rabbitmq" in config
+func NewChannelProvider(logger gologger.ILogger, username string, password string) *ChannelProvider {
 	return NewChannelProviderWithServers(logger, viper.GetStringSlice("rabbitmq"), username, password)
 }
 
-//NewChannelProviderWithServers gives you a new channel provider. You have to pass a list of rabbitmq servers.
-func NewChannelProviderWithServers(logger *gologger.CustomLogger, rabbitMqServers []string, username string, password string) *ChannelProvider {
+// NewChannelProviderWithServers gives you a new channel provider. You have to pass a list of rabbitmq servers.
+func NewChannelProviderWithServers(logger gologger.ILogger, rabbitMqServers []string, username string, password string) *ChannelProvider {
 
 	once.Do(func() {
 		serverList := rabbitMqServers

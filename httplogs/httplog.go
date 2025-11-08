@@ -16,8 +16,8 @@ var _gLogConfig *GlobalParameters
 
 // GlobalParameters is the class used to store global variables
 type GlobalParameters struct {
-	consulAgent            *objConsulAgent.ConsulAgent
-	serviceLogger          *gologger.CustomLogger
+	consulAgent            objConsulAgent.IConsulAgent
+	serviceLogger          gologger.ILogger
 	serviceName            string
 	consulIP               string
 	isMonitoringLogEnabled bool
@@ -52,13 +52,13 @@ func InitLogging(serviceName string, options ...Options) {
 		option(_gLogConfig)
 	}
 	if _gLogConfig.serviceLogger == nil {
-		SetLogger(gologger.NewLogger())
+		SetLogger(gologger.NewLoggerFactory().CreateZerologLogger())
 	}
 	setBasicConfig(serviceName)
 }
 
 // SetLogger (mandatory) parameter in order to configure logger
-func SetLogger(customLogger *gologger.CustomLogger) Options {
+func SetLogger(customLogger gologger.ILogger) Options {
 	return func(lb *GlobalParameters) { lb.serviceLogger = customLogger }
 }
 

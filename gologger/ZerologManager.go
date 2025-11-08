@@ -2,8 +2,10 @@ package gologger
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -84,14 +86,16 @@ func WithOutput(writer io.Writer) ZerologOption {
 	}
 }
 
-// WithConsoleWriter enables console-friendly output format with colors and human-readable timestamps
+// WithConsoleWriter enables console-friendly output format with human-readable timestamps
 func WithConsoleWriter() ZerologOption {
 	return func(l *ZerologLogger) {
 		consoleWriter := zerolog.ConsoleWriter{
 			Out:        os.Stdout,
 			TimeFormat: "15:04:05",
-			NoColor:    false,
+			NoColor:    true,
 		}
+		// Customize level format to be uppercase and fixed width
+		consoleWriter.FormatLevel = func(i interface{}) string { return strings.ToUpper(fmt.Sprintf("%-6s", i)) }
 		l.logger = l.logger.Output(consoleWriter)
 	}
 }
@@ -109,6 +113,7 @@ func WithStderr() ZerologOption {
 // NewZerologLogger creates a new high-performance logger using zerolog
 func NewZerologLogger(options ...ZerologOption) *ZerologLogger {
 	// Set up defaults
+	SetCustomZerologLevelNames()
 	l := &ZerologLogger{
 		facility:     "ErrorLogger",
 		logLevel:     ERROR,
@@ -124,11 +129,8 @@ func NewZerologLogger(options ...ZerologOption) *ZerologLogger {
 	l.logger = zerolog.New(os.Stdout).
 		With().
 		Timestamp().
-		Str("log_facility", l.facility).
-		Str("K8sNamespace", l.k8sNamespace).
 		Logger().
 		Level(zerolog.ErrorLevel)
-
 	// Apply options
 	for _, option := range options {
 		option(l)

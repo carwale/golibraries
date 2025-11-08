@@ -13,7 +13,7 @@ import (
 
 // Producer carries all the settings for the kafka producer
 type Producer struct {
-	logger                *gologger.CustomLogger
+	logger                gologger.ILogger
 	config                *kafka.ConfigMap
 	BrokerServers         string
 	IsAutoEventLogEnabled bool
@@ -23,7 +23,7 @@ type Producer struct {
 	CloseChannel          chan os.Signal
 }
 
-//KafkaTopic is used to create topics in kafka.
+// KafkaTopic is used to create topics in kafka.
 type KafkaTopic struct {
 	TopicName         string
 	Partitions        int
@@ -32,27 +32,24 @@ type KafkaTopic struct {
 
 func (kp *Producer) startEventLogging() {
 	go func() {
-		for {
-			select {
-			case event := <-kp.EventsChannel:
-				if !kp.IsAutoEventLogEnabled {
-					continue
+		for event := range kp.EventsChannel {
+			if !kp.IsAutoEventLogEnabled {
+				continue
+			}
+			switch eventType := event.(type) {
+			case *kafka.Message:
+				m := eventType
+				if m.TopicPartition.Error != nil {
+					kp.logger.LogError(fmt.Sprintf("Error received on error channel %v", m.TopicPartition), m.TopicPartition.Error)
+				} else {
+					kp.logger.LogDebugf("Delivered message to topic %s [%d] at offset %v",
+						*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
 				}
-				switch eventType := event.(type) {
-				case *kafka.Message:
-					m := eventType
-					if m.TopicPartition.Error != nil {
-						kp.logger.LogError(fmt.Sprintf("Error received on error channel %v", m.TopicPartition), m.TopicPartition.Error)
-					} else {
-						kp.logger.LogDebugf("Delivered message to topic %s [%d] at offset %v",
-							*m.TopicPartition.Topic, m.TopicPartition.Partition, m.TopicPartition.Offset)
-					}
-				case kafka.Error:
-					// Errors should generally be considered
-					// informational, the client will try to
-					// automatically recover.
-					kp.logger.LogError(fmt.Sprintf("Error: %v\n", eventType.Code()), eventType)
-				}
+			case kafka.Error:
+				// Errors should generally be considered
+				// informational, the client will try to
+				// automatically recover.
+				kp.logger.LogError(fmt.Sprintf("Error: %v\n", eventType.Code()), eventType)
 			}
 		}
 	}()
@@ -60,15 +57,15 @@ func (kp *Producer) startEventLogging() {
 
 func (kp *Producer) setGracefulCleaning() {
 	go func() {
-		_ = <-kp.CloseChannel
-		kp.logger.LogWarning("Caught closing signal in producer : terminating")
+		cl := <-kp.CloseChannel
+		kp.logger.LogWarning(fmt.Sprintf("Caught closing signal %s in producer : terminating", cl.String()))
 		kp.producer.Flush(30000)
 		kp.producer.Close()
 		kp.logger.LogWarning("Gracefully closed producer")
 	}()
 }
 
-//PublishMessageToTopic publishes message to topic
+// PublishMessageToTopic publishes message to topic
 func (kp *Producer) PublishMessageToTopic(msg *[]byte, topic string) {
 	kp.publishChannel <- &kafka.Message{
 		TopicPartition: kafka.TopicPartition{
@@ -79,7 +76,7 @@ func (kp *Producer) PublishMessageToTopic(msg *[]byte, topic string) {
 	}
 }
 
-//PublishMessageToTopicWithKey publishes message to topic with key
+// PublishMessageToTopicWithKey publishes message to topic with key
 func (kp *Producer) PublishMessageToTopicWithKey(msg *[]byte, topic string, key string) {
 	kp.publishChannel <- &kafka.Message{TopicPartition: kafka.TopicPartition{
 		Topic:     &topic,
@@ -90,7 +87,7 @@ func (kp *Producer) PublishMessageToTopicWithKey(msg *[]byte, topic string, key 
 	}
 }
 
-//CreateTopics creats a new topics if they do not exist.
+// CreateTopics creats a new topics if they do not exist.
 func (kp *Producer) CreateTopics(topics ...KafkaTopic) error {
 	adminClient, err := kafka.NewAdminClientFromProducer(kp.producer)
 	if err != nil {
@@ -131,36 +128,36 @@ type ProducerOption func(l *Producer)
 // SetProducerCustomConfig sets the custom config for kafka
 func SetProducerCustomConfig(customConfig map[string]interface{}) ProducerOption {
 	return func(kp *Producer) {
-		if customConfig != nil {
-			for k, v := range customConfig {
-				kp.config.SetKey(k, v)
-			}
+		for k, v := range customConfig {
+			kp.config.SetKey(k, v)
 		}
 	}
 }
 
-//SetProducerLogger sets the logger for consul
-//Defaults to consul logger
-func SetProducerLogger(customLogger *gologger.CustomLogger) ProducerOption {
+// SetProducerLogger sets the logger for consul
+// Defaults to consul logger
+func SetProducerLogger(customLogger gologger.ILogger) ProducerOption {
 	return func(kp *Producer) { kp.logger = customLogger }
 }
 
-//EnableEventLogging will enable event logging. By default it is disabled
+// EnableEventLogging will enable event logging. By default it is disabled
 func EnableEventLogging(enableEventLogging bool) ProducerOption {
 	return func(kp *Producer) { kp.IsAutoEventLogEnabled = enableEventLogging }
 }
 
-//NewKafkaProducer creates a new producer
-//Following is the defaults for the kafka configuration
-//		"go.batch.producer":                     true
-//		"go.events.channel.size":                100000
-//		"go.produce.channel.size":               100000
-//		"max.in.flight.requests.per.connection": 1000000
-//		"linger.ms":                             100
-//		"queue.buffering.max.messages":          100000
-//		"batch.num.messages":                    5000
-//		"acks":                                  "1"
-//You can change the defaults by sending a map to the SetCustomConfig Option
+// NewKafkaProducer creates a new producer
+// Following is the defaults for the kafka configuration
+//
+//	"go.batch.producer":                     true
+//	"go.events.channel.size":                100000
+//	"go.produce.channel.size":               100000
+//	"max.in.flight.requests.per.connection": 1000000
+//	"linger.ms":                             100
+//	"queue.buffering.max.messages":          100000
+//	"batch.num.messages":                    5000
+//	"acks":                                  "1"
+//
+// You can change the defaults by sending a map to the SetCustomConfig Option
 func NewKafkaProducer(brokerServers string, options ...ProducerOption) *Producer {
 	kp := &Producer{
 		CloseChannel:          make(chan os.Signal, 1),
@@ -185,7 +182,7 @@ func NewKafkaProducer(brokerServers string, options ...ProducerOption) *Producer
 	}
 
 	if kp.logger == nil {
-		kp.logger = gologger.NewLogger()
+		kp.logger = gologger.NewLoggerFactory().CreateZerologLogger()
 	}
 
 	producer, err := kafka.NewProducer(kp.config)

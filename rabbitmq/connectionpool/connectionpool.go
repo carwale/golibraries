@@ -21,7 +21,7 @@ type Pool struct {
 
 // IConnectionProvider defines the interface to be implemented by a connection provider.
 type IConnectionProvider interface {
-	NewConnection(string, string, string, *gologger.CustomLogger) (*amqp.Connection, error)
+	NewConnection(string, string, string, gologger.ILogger) (*amqp.Connection, error)
 }
 
 // Container contains connection and related info
@@ -30,10 +30,10 @@ type Container struct {
 	serverInfo string
 }
 
-var uclogger *gologger.CustomLogger
+var uclogger gologger.ILogger
 
 // NewConnectionPool returns new connection pool, waits for 3 seconds before returning
-func NewConnectionPool(serverList *[]string, username string, password string,  connectionProvider IConnectionProvider, logger *gologger.CustomLogger) *Pool {
+func NewConnectionPool(serverList *[]string, username string, password string, connectionProvider IConnectionProvider, logger gologger.ILogger) *Pool {
 	pool := &Pool{
 		connections:        make(map[string]*Container),
 		serverList:         *serverList,

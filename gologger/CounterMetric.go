@@ -7,7 +7,7 @@ import (
 // CounterMetric : Default histogram message type implementing IMetricVec
 type CounterMetric struct {
 	counter *prometheus.CounterVec
-	logger  *CustomLogger
+	logger  ILogger
 }
 
 // UpdateTime is a do nothing operation for counter metric
@@ -39,7 +39,7 @@ func (msg *CounterMetric) RemoveLogging(labels ...string) {
 }
 
 // NewCounterMetric creates a new histrogram message and registers it to prometheus
-func NewCounterMetric(counter *prometheus.CounterVec, logger *CustomLogger) *CounterMetric {
+func NewCounterMetric(counter *prometheus.CounterVec, logger ILogger) *CounterMetric {
 	msg := &CounterMetric{counter, logger}
 	prometheus.MustRegister(counter)
 	return msg

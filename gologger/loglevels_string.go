@@ -2,7 +2,11 @@
 
 package gologger
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/rs/zerolog"
+)
 
 const _LogLevels_name = "ERRORWARNINFODEBUG"
 
@@ -13,4 +17,13 @@ func (i LogLevels) String() string {
 		return fmt.Sprintf("LogLevels(%d)", i)
 	}
 	return _LogLevels_name[_LogLevels_index[i]:_LogLevels_index[i+1]]
+}
+
+func SetCustomZerologLevelNames() {
+	zerolog.LevelErrorValue = "ERROR"
+	zerolog.LevelWarnValue = "WARN"
+	zerolog.LevelInfoValue = "INFO"
+	zerolog.LevelDebugValue = "DEBUG"
+	zerolog.LevelTraceValue = "TRACE"
+	zerolog.LevelFatalValue = "FATAL"
 }

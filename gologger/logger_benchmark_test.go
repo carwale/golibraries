@@ -26,8 +26,8 @@ const (
 
 // Setup functions for different logger configurations
 
+// setupCustomLogger creates a CustomLogger that outputs to io.Discard for fair comparison
 func setupCustomLogger() *CustomLogger {
-	// Redirect to discard to avoid output interference
 	return NewLogger(
 		DisableGraylog(true),
 		ConsolePrintEnabled(false),
@@ -36,21 +36,62 @@ func setupCustomLogger() *CustomLogger {
 	)
 }
 
-func setupZerologDiscard() zerolog.Logger {
-	return zerolog.New(io.Discard).With().Timestamp().Logger()
+// setupCustomLoggerWithOutput creates a CustomLogger with custom output
+func setupCustomLoggerWithOutput(writer io.Writer) *CustomLogger {
+	// Note: CustomLogger doesn't support custom writers directly
+	// This is a limitation that should be noted in comparisons
+	return NewLogger(
+		DisableGraylog(true),
+		ConsolePrintEnabled(false),
+		SetLogLevel("DEBUG"),
+		GraylogFacility("BenchmarkLogger"),
+	)
 }
 
-func setupZerologBuffer() (zerolog.Logger, *bytes.Buffer) {
+// setupZerologLoggerDiscard creates our ZerologLogger that outputs to io.Discard
+// WithDiscardOutput sets the logger to discard all output (for benchmarking)
+func WithDiscardOutput() ZerologOption {
+	return func(l *ZerologLogger) {
+		l.logger = l.logger.Output(io.Discard)
+	}
+}
+
+func setupZerologLoggerDiscard() ILogger {
+	return NewZerologLogger(
+		WithLogLevel("DEBUG"),
+		WithDiscardOutput(),
+	)
+}
+
+func setupZerologLoggerErrorLevel() ILogger {
+	return NewZerologLogger(
+		WithLogLevel("ERROR"),
+		WithDiscardOutput(),
+	)
+}
+
+// setupZerologLoggerBuffer creates our ZerologLogger that outputs to buffer
+func setupZerologLoggerBuffer() (*ZerologLogger, *bytes.Buffer) {
 	buf := &bytes.Buffer{}
-	logger := zerolog.New(buf).With().Timestamp().Logger()
+	logger := NewZerologLogger(
+		WithOutput(buf),
+		WithLogLevel("DEBUG"),
+		WithFacility("BenchmarkLogger"),
+	)
 	return logger, buf
 }
 
-func setupZerologStderr() zerolog.Logger {
-	return zerolog.New(os.Stderr).With().Timestamp().Logger()
+// setupRawZerologDiscard creates raw zerolog for comparison
+func setupRawZerologDiscard() zerolog.Logger {
+	return zerolog.New(io.Discard).With().
+		Timestamp().
+		Str("log_facility", "BenchmarkLogger").
+		Str("K8sNamespace", "dev").
+		Logger().
+		Level(zerolog.DebugLevel)
 }
 
-// Benchmark basic logging operations
+// Benchmark basic logging operations (Interface-based comparison)
 
 func BenchmarkCustomLogger_Info(b *testing.B) {
 	logger := setupCustomLogger()
@@ -62,27 +103,27 @@ func BenchmarkCustomLogger_Info(b *testing.B) {
 	})
 }
 
-func BenchmarkZerolog_Info_Discard(b *testing.B) {
-	logger := setupZerologDiscard()
+func BenchmarkZerologLogger_Info_Discard(b *testing.B) {
+	logger := setupZerologLoggerDiscard()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			logger.Info().Msg(logMessage)
+			logger.LogInfo(logMessage)
 		}
 	})
 }
 
-func BenchmarkZerolog_Info_Buffer(b *testing.B) {
-	logger, _ := setupZerologBuffer()
+func BenchmarkZerologLogger_Info_Buffer(b *testing.B) {
+	logger, _ := setupZerologLoggerBuffer()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			logger.Info().Msg(logMessage)
+			logger.LogInfo(logMessage)
 		}
 	})
 }
 
-// Benchmark formatted logging
+// Benchmark formatted logging (Interface-based comparison)
 
 func BenchmarkCustomLogger_Infof(b *testing.B) {
 	logger := setupCustomLogger()
@@ -94,12 +135,12 @@ func BenchmarkCustomLogger_Infof(b *testing.B) {
 	})
 }
 
-func BenchmarkZerolog_Infof_Discard(b *testing.B) {
-	logger := setupZerologDiscard()
+func BenchmarkZerologLogger_Infof_Discard(b *testing.B) {
+	logger := setupZerologLoggerDiscard()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			logger.Info().Msgf("Processing request %d with status %s", 12345, "success")
+			logger.LogInfof("Processing request %d with status %s", 12345, "success")
 		}
 	})
 }
@@ -117,13 +158,12 @@ func BenchmarkCustomLogger_Error(b *testing.B) {
 	})
 }
 
-func BenchmarkZerolog_Error_Discard(b *testing.B) {
-	logger := setupZerologDiscard()
-	err := errors.New(benchmarkError)
+func BenchmarkZerologLogger_Error_Discard(b *testing.B) {
+	logger := setupZerologLoggerDiscard()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			logger.Error().Err(err).Msg(errorMessage)
+			logger.LogErrorWithoutError("Database connection failed")
 		}
 	})
 }
@@ -145,17 +185,17 @@ func BenchmarkCustomLogger_InfoWithFields(b *testing.B) {
 	})
 }
 
-func BenchmarkZerolog_InfoWithFields_Discard(b *testing.B) {
-	logger := setupZerologDiscard()
+func BenchmarkZerologLogger_InfoWithFields_Discard(b *testing.B) {
+	logger := setupZerologLoggerDiscard()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			logger.Info().
-				Str("user_id", "12345").
-				Str("request_id", "req-abc-123").
-				Str("endpoint", "/api/v1/users").
-				Str("duration_ms", "150").
-				Msg(logMessage)
+			logger.LogInfoMessage(logMessage,
+				Pair{Key: "user_id", Value: "12345"},
+				Pair{Key: "request_id", Value: "req-abc-123"},
+				Pair{Key: "endpoint", Value: "/api/v1/users"},
+				Pair{Key: "duration_ms", Value: "150"},
+			)
 		}
 	})
 }
@@ -180,8 +220,19 @@ func BenchmarkCustomLogger_InfoWithContext(b *testing.B) {
 	})
 }
 
-func BenchmarkZerolog_InfoWithContext_Discard(b *testing.B) {
-	logger := setupZerologDiscard()
+func BenchmarkZerologLogger_InfoWithContext_Discard(b *testing.B) {
+	logger := setupZerologLoggerDiscard()
+	ctx := context.Background()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.LogInfoWithContext(ctx, logMessage)
+		}
+	})
+}
+
+func BenchmarkRawZerolog_InfoWithContext_Discard(b *testing.B) {
+	logger := setupRawZerologDiscard()
 	ctx := context.Background()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -208,8 +259,18 @@ func BenchmarkCustomLogger_Debug_Disabled(b *testing.B) {
 	})
 }
 
-func BenchmarkZerolog_Debug_Disabled(b *testing.B) {
-	logger := setupZerologDiscard()
+func BenchmarkZerologLogger_Debug_Disabled(b *testing.B) {
+	logger := setupZerologLoggerErrorLevel()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.LogDebug(logMessage) // This should be filtered out
+		}
+	})
+}
+
+func BenchmarkRawZerolog_Debug_Disabled(b *testing.B) {
+	logger := setupRawZerologDiscard()
 	logger = logger.Level(zerolog.ErrorLevel) // Only ERROR and above
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -229,8 +290,18 @@ func BenchmarkCustomLogger_Debug_Enabled(b *testing.B) {
 	})
 }
 
-func BenchmarkZerolog_Debug_Enabled(b *testing.B) {
-	logger := setupZerologDiscard()
+func BenchmarkZerologLogger_Debug_Enabled(b *testing.B) {
+	logger := setupZerologLoggerDiscard()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.LogDebug(logMessage)
+		}
+	})
+}
+
+func BenchmarkRawZerolog_Debug_Enabled(b *testing.B) {
+	logger := setupRawZerologDiscard()
 	logger = logger.Level(zerolog.DebugLevel)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -261,8 +332,27 @@ func BenchmarkCustomLogger_ComplexLog(b *testing.B) {
 	})
 }
 
-func BenchmarkZerolog_ComplexLog_Discard(b *testing.B) {
-	logger := setupZerologDiscard()
+func BenchmarkZerologLogger_ComplexLog_Discard(b *testing.B) {
+	logger := setupZerologLoggerDiscard()
+	err := errors.New(benchmarkError)
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			logger.LogErrorMessage(logMessage, err,
+				Pair{"user_id", "12345"},
+				Pair{"request_id", "req-abc-123"},
+				Pair{"endpoint", "/api/v1/users"},
+				Pair{"method", "POST"},
+				Pair{"status_code", "500"},
+				Pair{"duration_ms", "1500"},
+				Pair{"retry_count", "3"},
+			)
+		}
+	})
+}
+
+func BenchmarkRawZerolog_ComplexLog_Discard(b *testing.B) {
+	logger := setupRawZerologDiscard()
 	err := errors.New(benchmarkError)
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
@@ -276,7 +366,7 @@ func BenchmarkZerolog_ComplexLog_Discard(b *testing.B) {
 				Str("status_code", "500").
 				Str("duration_ms", "1500").
 				Str("retry_count", "3").
-				Msg(errorMessage)
+				Msg(logMessage)
 		}
 	})
 }
@@ -302,8 +392,22 @@ func BenchmarkCustomLogger_TicToc(b *testing.B) {
 	})
 }
 
-func BenchmarkZerolog_Duration_Discard(b *testing.B) {
-	logger := setupZerologDiscard()
+func BenchmarkZerologLogger_Duration_Discard(b *testing.B) {
+	logger := setupZerologLoggerDiscard()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			func() {
+				defer logger.Toc(logger.Tic("benchmark-operation"))
+				// Simulate some work
+				time.Sleep(time.Microsecond)
+			}()
+		}
+	})
+}
+
+func BenchmarkRawZerolog_Duration_Discard(b *testing.B) {
+	logger := setupRawZerologDiscard()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
@@ -331,8 +435,20 @@ func BenchmarkCustomLogger_Allocations(b *testing.B) {
 	}
 }
 
-func BenchmarkZerolog_Allocations_Discard(b *testing.B) {
-	logger := setupZerologDiscard()
+func BenchmarkZerologLogger_Allocations_Discard(b *testing.B) {
+	logger := setupZerologLoggerDiscard()
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		logger.LogInfoMessage(logMessage,
+			Pair{"key1", "value1"},
+			Pair{"key2", "value2"},
+		)
+	}
+}
+
+func BenchmarkRawZerolog_Allocations_Discard(b *testing.B) {
+	logger := setupRawZerologDiscard()
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
@@ -383,9 +499,10 @@ func BenchmarkZerolog_WithFile(b *testing.B) {
 
 // Comparative benchmarks (direct comparison)
 
+// Primary Comparison: CustomLogger vs ZerologLogger (Interface-based)
 func BenchmarkComparison_SimpleInfo(b *testing.B) {
 	customLogger := setupCustomLogger()
-	zerologLogger := setupZerologDiscard()
+	zerologLogger := setupZerologLoggerDiscard()
 
 	b.Run("CustomLogger", func(b *testing.B) {
 		b.RunParallel(func(pb *testing.PB) {
@@ -395,10 +512,10 @@ func BenchmarkComparison_SimpleInfo(b *testing.B) {
 		})
 	})
 
-	b.Run("Zerolog", func(b *testing.B) {
+	b.Run("ZerologLogger", func(b *testing.B) {
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				zerologLogger.Info().Msg(logMessage)
+				zerologLogger.LogInfo(logMessage)
 			}
 		})
 	})
@@ -467,9 +584,10 @@ func benchmarkLoggerInterface(b *testing.B, logger ILogger) {
 	})
 }
 
+// Primary Comparison: Structured Logging Performance
 func BenchmarkComparison_WithFields(b *testing.B) {
 	customLogger := setupCustomLogger()
-	zerologLogger := setupZerologDiscard()
+	zerologLogger := setupZerologLoggerDiscard()
 
 	b.Run("CustomLogger", func(b *testing.B) {
 		b.RunParallel(func(pb *testing.PB) {
@@ -482,13 +600,13 @@ func BenchmarkComparison_WithFields(b *testing.B) {
 		})
 	})
 
-	b.Run("Zerolog", func(b *testing.B) {
+	b.Run("ZerologLogger", func(b *testing.B) {
 		b.RunParallel(func(pb *testing.PB) {
 			for pb.Next() {
-				zerologLogger.Info().
-					Str("user_id", "12345").
-					Str("request_id", "req-abc-123").
-					Msg(logMessage)
+				zerologLogger.LogInfoMessage(logMessage,
+					Pair{"user_id", "12345"},
+					Pair{"request_id", "req-abc-123"},
+				)
 			}
 		})
 	})
@@ -507,12 +625,110 @@ func BenchmarkZerolog_GlobalLogger(b *testing.B) {
 	})
 }
 
-func BenchmarkZerolog_InstanceLogger(b *testing.B) {
-	logger := setupZerologDiscard()
+func BenchmarkZerologLogger_InstanceLogger(b *testing.B) {
+	logger := setupZerologLoggerDiscard()
 	b.ResetTimer()
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
-			logger.Info().Msg(logMessage)
+			logger.LogInfo(logMessage)
+		}
+	})
+}
+
+// Additional Interface-based Comparisons
+
+// Benchmark error logging with both loggers
+func BenchmarkComparison_ErrorLogging(b *testing.B) {
+	customLogger := setupCustomLogger()
+	zerologLogger := setupZerologLoggerDiscard()
+	err := errors.New(benchmarkError)
+
+	b.Run("CustomLogger", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				customLogger.LogError(errorMessage, err)
+			}
+		})
+	})
+
+	b.Run("ZerologLogger", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				zerologLogger.LogError(errorMessage, err)
+			}
+		})
+	})
+}
+
+// Benchmark formatted logging
+func BenchmarkComparison_FormattedLogging(b *testing.B) {
+	customLogger := setupCustomLogger()
+	zerologLogger := setupZerologLoggerDiscard()
+
+	b.Run("CustomLogger", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				customLogger.LogInfof("Processing request %d with status %s", 12345, "success")
+			}
+		})
+	})
+
+	b.Run("ZerologLogger", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				zerologLogger.LogInfof("Processing request %d with status %s", 12345, "success")
+			}
+		})
+	})
+}
+
+// Benchmark context logging (important for tracing)
+func BenchmarkComparison_ContextLogging(b *testing.B) {
+	customLogger := setupCustomLogger()
+	zerologLogger := setupZerologLoggerDiscard()
+	ctx := context.Background()
+
+	b.Run("CustomLogger", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				customLogger.LogInfoWithContext(ctx, logMessage)
+			}
+		})
+	})
+
+	b.Run("ZerologLogger", func(b *testing.B) {
+		b.RunParallel(func(pb *testing.PB) {
+			for pb.Next() {
+				zerologLogger.LogInfoWithContext(ctx, logMessage)
+			}
+		})
+	})
+}
+
+// Benchmark memory allocations (key performance indicator)
+func BenchmarkComparison_MemoryAllocations(b *testing.B) {
+	customLogger := setupCustomLogger()
+	zerologLogger := setupZerologLoggerDiscard()
+
+	b.Run("CustomLogger", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			customLogger.LogInfoMessage(logMessage,
+				Pair{"key1", "value1"},
+				Pair{"key2", "value2"},
+			)
+		}
+	})
+
+	b.Run("ZerologLogger", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			zerologLogger.LogInfoMessage(logMessage,
+				Pair{"key1", "value1"},
+				Pair{"key2", "value2"},
+			)
 		}
 	})
 }

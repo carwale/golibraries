@@ -12,7 +12,7 @@ import (
 // CacheClient is used to add,update,remove items from memcache
 type CacheClient struct {
 	client *memcache.Client
-	logger *gologger.CustomLogger
+	logger gologger.ILogger
 }
 
 // GetBytes converts interface{} to a byte array
@@ -65,12 +65,12 @@ func NewMemCachedClient(serverList []string) (*CacheClient, error) {
 	}
 	c := &CacheClient{
 		client: memCacheClient,
-		logger: gologger.NewLogger(),
+		logger: gologger.NewLoggerFactory().CreateZerologLogger(),
 	}
 	return c, nil
 }
 
-func (c *CacheClient) SetLogger(logger *gologger.CustomLogger) {
+func (c *CacheClient) SetLogger(logger gologger.ILogger) {
 	c.logger = logger
 }
 

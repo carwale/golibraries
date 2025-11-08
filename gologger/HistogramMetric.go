@@ -7,7 +7,7 @@ import (
 // HistogramMetric : Default histogram message type implementing IMetricVec
 type HistogramMetric struct {
 	histogram *prometheus.HistogramVec
-	logger    *CustomLogger
+	logger    ILogger
 }
 
 // UpdateTime the message with calculated latency
@@ -39,7 +39,7 @@ func (msg *HistogramMetric) RemoveLogging(labels ...string) {
 }
 
 // NewHistogramMetric creates a new histrogram message and registers it to prometheus
-func NewHistogramMetric(hist *prometheus.HistogramVec, logger *CustomLogger) *HistogramMetric {
+func NewHistogramMetric(hist *prometheus.HistogramVec, logger ILogger) *HistogramMetric {
 	msg := &HistogramMetric{hist, logger}
 	prometheus.MustRegister(hist)
 	return msg

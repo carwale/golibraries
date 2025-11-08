@@ -16,15 +16,15 @@ import (
 type healthCheckServer struct {
 	healthCheckPort string
 	checkFunction   func() (bool, error)
-	logger          *gologger.CustomLogger
+	logger          gologger.ILogger
 }
 
-//Options sets the oprions for the health checking service
+// Options sets the oprions for the health checking service
 type Options func(hcs *healthCheckServer)
 
-//Logger sets the logger for consul
-//Defaults to consul logger
-func Logger(customLogger *gologger.CustomLogger) Options {
+// Logger sets the logger for consul
+// Defaults to consul logger
+func Logger(customLogger gologger.ILogger) Options {
 	return func(hcs *healthCheckServer) { hcs.logger = customLogger }
 }
 
@@ -42,7 +42,7 @@ func NewHealthCheckServer(healthCheckPort string, checkFunction func() (bool, er
 	}
 
 	if hcs.logger == nil {
-		hcs.logger = gologger.NewLogger()
+		hcs.logger = gologger.NewLoggerFactory().CreateZerologLogger()
 	}
 
 	go hcs.startHealthService()
