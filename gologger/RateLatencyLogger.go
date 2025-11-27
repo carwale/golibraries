@@ -24,7 +24,7 @@ type RateLatencyLogger struct {
 	countSubTunnel chan updatePacket
 	countSetTunnel chan updatePacket
 	addMsgTunnel   chan messageAdder
-	logger         *CustomLogger
+	logger         ILogger
 	isRan          bool
 }
 
@@ -43,21 +43,21 @@ func (mgl *RateLatencyLogger) Toc(start time.Time, identifier string, labels ...
 	}
 }
 
-//IncVal is used for counters and gauges
+// IncVal is used for counters and gauges
 func (mgl *RateLatencyLogger) IncVal(value int64, identifier string, labels ...string) {
 	if mgl.isRan {
 		mgl.countIncTunnel <- updatePacket{identifier, labels, value}
 	}
 }
 
-//SubVal is used for counters and gauges
+// SubVal is used for counters and gauges
 func (mgl *RateLatencyLogger) SubVal(value int64, identifier string, labels ...string) {
 	if mgl.isRan {
 		mgl.countSubTunnel <- updatePacket{identifier, labels, value}
 	}
 }
 
-//SetVal is used for counters and gauges
+// SetVal is used for counters and gauges
 func (mgl *RateLatencyLogger) SetVal(value int64, identifier string, labels ...string) {
 	if mgl.isRan {
 		mgl.countSetTunnel <- updatePacket{identifier, labels, value}
@@ -120,7 +120,7 @@ type RateLatencyOption func(rl *RateLatencyLogger)
 
 // SetLogger sets the output logger.
 // Default is stderr
-func SetLogger(logger *CustomLogger) RateLatencyOption {
+func SetLogger(logger ILogger) RateLatencyOption {
 	return func(rl *RateLatencyLogger) {
 		rl.logger = logger
 	}

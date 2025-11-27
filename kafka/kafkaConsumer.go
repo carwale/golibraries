@@ -33,7 +33,7 @@ type IProcessor interface {
 // Consumer holds the configuration for kafka consumers
 type Consumer struct {
 	InstanceID                      string
-	logger                          *gologger.CustomLogger
+	logger                          gologger.ILogger
 	config                          *kafka.ConfigMap
 	BrokerServers                   string
 	Topics                          []string
@@ -70,17 +70,15 @@ type ConsumerOption func(l *Consumer)
 // SetConsumerCustomConfig sets the custom config for kafka
 func SetConsumerCustomConfig(customConfig map[string]interface{}) ConsumerOption {
 	return func(kc *Consumer) {
-		if customConfig != nil {
-			for k, v := range customConfig {
-				kc.config.SetKey(k, v)
-			}
+		for k, v := range customConfig {
+			kc.config.SetKey(k, v)
 		}
 	}
 }
 
-//ConsumerLogger sets the logger for consul
-//Defaults to consul logger
-func ConsumerLogger(customLogger *gologger.CustomLogger) ConsumerOption {
+// ConsumerLogger sets the logger for consul
+// Defaults to consul logger
+func ConsumerLogger(customLogger gologger.ILogger) ConsumerOption {
 	return func(kc *Consumer) { kc.logger = customLogger }
 }
 
@@ -93,7 +91,7 @@ func EnableDeadLettering() ConsumerOption {
 // When enabling replaymode you need to pass the following
 // ReplayType - this can be timestamp of beginning
 // ReplayFrom - the duration before the current time from which you need to process the message.
-//this is only considered in timestamp mode
+// this is only considered in timestamp mode
 func EnableReplayMode(replayType ReplayType, replayFrom string, replyCompletionChannel chan bool) ConsumerOption {
 	return func(kc *Consumer) {
 		kc.ReplayMode = true
@@ -163,7 +161,7 @@ func NewKafkaConsumer(brokerServers string, consumerGroupName string, topics []s
 	}
 
 	if kc.logger == nil {
-		kc.logger = gologger.NewLogger()
+		kc.logger = gologger.NewLoggerFactory().CreateZerologLogger()
 	}
 	if kc.ReplayMode {
 		kc.config.SetKey("go.application.rebalance.enable", true)
@@ -206,7 +204,7 @@ func (kc *Consumer) startDeadLetteringConsumer(processor IProcessor) {
 	}
 }
 
-//Start starts the consumer with the settings applied while creating the consumer
+// Start starts the consumer with the settings applied while creating the consumer
 func (kc *Consumer) Start(processor IProcessor) {
 	if len(kc.Topics) == 0 {
 		kc.logger.LogErrorWithoutError(fmt.Sprintf("No topic subscribed for %s", kc.InstanceID))
@@ -246,7 +244,7 @@ consumeloop:
 	}
 }
 
-//processEvent processes a kafka consumer event. It returns true if the consumer needs to stop
+// processEvent processes a kafka consumer event. It returns true if the consumer needs to stop
 func (kc *Consumer) processEvent(ev kafka.Event, processor IProcessor, consumerStartTime time.Time) bool {
 	var err error
 	switch e := ev.(type) {
@@ -292,9 +290,6 @@ func (kc *Consumer) processEvent(ev kafka.Event, processor IProcessor, consumerS
 			case TIMESTAMP:
 				timeFromConsumerStart := time.Now().Add(-kc.ReplayFrom)
 				kc.logger.LogErrorWithoutError(fmt.Sprintf("Replay from timestamp %s, resetting offsets to that point", timeFromConsumerStart))
-				if err != nil {
-					kc.logger.LogError(fmt.Sprintf("failed to parse replay timestamp %s due to error", timeFromConsumerStart), err)
-				}
 				//reset offsets of all assigned partitions to the specified timestamp in the past
 				partitionsToAssign, err = kc.resetPartitionOffsetsToTimestamp(e.Partitions, timeFromConsumerStart.UnixNano()/int64(time.Millisecond))
 				if err != nil {

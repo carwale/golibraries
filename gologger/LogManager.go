@@ -27,6 +27,9 @@ type CustomLogger struct {
 	logger                *log.Logger
 }
 
+// Ensure CustomLogger implements ILogger interface
+var _ ILogger = (*CustomLogger)(nil)
+
 // Pair is a tuple of strings
 type Pair struct {
 	Key, Value string
@@ -240,7 +243,7 @@ func (l *CustomLogger) LogDebugf(str string, args ...interface{}) {
 
 // LogMessage is used to log plain message
 func (l *CustomLogger) LogMessage(message string) {
-	l.logger.Printf(message)
+	l.logger.Print(message)
 }
 
 // logMessage is used to log message with any log level

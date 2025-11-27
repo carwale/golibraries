@@ -24,13 +24,13 @@ type IProcessor interface {
 
 // OperationManager manages rabbitmq connections and operations like publish & consume
 type OperationManager struct {
-	logger          *gologger.CustomLogger
+	logger          gologger.ILogger
 	rabbitMqServers []string
 	channelProvider *channelprovider.ChannelProvider
 	queueProps      queueProperties
 	dlQueueProps    queueProperties
-	username 		string
-	password 		string
+	username        string
+	password        string
 }
 
 // queueProperties struct holds queue details
@@ -44,18 +44,18 @@ type queueProperties struct {
 
 // NewRabbitMQManager : returns RabbitMQ OperationManager.
 // panics if empty server list given.
-func NewRabbitMQManager(logger *gologger.CustomLogger, rabbitMqServers []string, queueName string, username string, password string) *OperationManager {
+func NewRabbitMQManager(logger gologger.ILogger, rabbitMqServers []string, queueName string, username string, password string) *OperationManager {
 	if len(rabbitMqServers) == 0 {
 		panic("No rabbitmq servers provided.")
 	}
-	if (username == "" || password == "") {
+	if username == "" || password == "" {
 		panic("RabbitMQ username or password is empty")
 	}
 	om := &OperationManager{
 		logger:          logger,
 		rabbitMqServers: rabbitMqServers,
-		username: username,
-		password: password,
+		username:        username,
+		password:        password,
 	}
 	om.channelProvider = channelprovider.NewChannelProviderWithServers(om.logger, om.rabbitMqServers, om.username, om.password)
 	// Init queue properties

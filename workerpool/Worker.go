@@ -1,6 +1,7 @@
 package workerpool
 
 import (
+	"strconv"
 	"sync"
 
 	"github.com/carwale/golibraries/gologger"
@@ -81,7 +82,7 @@ func SetNewWorker(newWorker func(chan chan IJob, int) IWorker) Option {
 }
 
 // SetLogger sets the logger in dispatcher
-func SetLogger(logger *gologger.CustomLogger) Option {
+func SetLogger(logger gologger.ILogger) Option {
 	return func(d *Dispatcher) {
 		d.logger = logger
 	}
@@ -108,17 +109,16 @@ const maxWorkerGaugeMetricID = "MAX-WORKERS"
 // To submit a job to worker pool, use code
 // `dispatcher.JobQueue <- job`
 type Dispatcher struct {
-	name                  string
-	workerPool            chan chan IJob // A pool of workers channels that are registered with the dispatcher
-	maxWorkers            int
-	newWorker             func(chan chan IJob, int) IWorker
-	JobQueue              chan IJob
-	workerTracker         chan int
-	maxUsedWorkers        int
-	latencyLogger         gologger.IMultiLogger
-	resetMaxWorkerCount   chan bool
-	maxWorkersGaugeMetric *gologger.GaugeMetric
-	logger                *gologger.CustomLogger
+	name                string
+	workerPool          chan chan IJob // A pool of workers channels that are registered with the dispatcher
+	maxWorkers          int
+	newWorker           func(chan chan IJob, int) IWorker
+	JobQueue            chan IJob
+	workerTracker       chan int
+	maxUsedWorkers      int
+	latencyLogger       gologger.IMultiLogger
+	resetMaxWorkerCount chan bool
+	logger              gologger.ILogger
 }
 
 func (d *Dispatcher) run() {
@@ -134,17 +134,14 @@ func (d *Dispatcher) run() {
 }
 
 func (d *Dispatcher) dispatch() {
-	for {
-		select {
-		case job := <-d.JobQueue:
-			// try to obtain a worker job channel that is available.
-			// this will block until a worker is idle
-			jobChannel := <-d.workerPool
-			// track number of workers processing concurrently
-			d.workerTracker <- d.maxWorkers - len(d.workerPool)
-			// dispatch the job to the worker job channel
-			jobChannel <- job
-		}
+	for job := range d.JobQueue {
+		// try to obtain a worker job channel that is available.
+		// this will block until a worker is idle
+		jobChannel := <-d.workerPool
+		// track number of workers processing concurrently
+		d.workerTracker <- d.maxWorkers - len(d.workerPool)
+		// dispatch the job to the worker job channel
+		jobChannel <- job
 	}
 }
 
@@ -160,7 +157,7 @@ func (d *Dispatcher) trackWorkers() {
 				// update used workers
 				if numWorkers > d.maxUsedWorkers {
 					d.maxUsedWorkers = numWorkers
-					d.logger.LogDebug("setting max workers to " + string(numWorkers))
+					d.logger.LogDebug("setting max workers to " + strconv.Itoa(numWorkers))
 					d.latencyLogger.SetVal(int64(numWorkers), maxWorkerGaugeMetricID, d.name)
 				}
 			}
@@ -168,7 +165,7 @@ func (d *Dispatcher) trackWorkers() {
 	}()
 }
 
-//ResetDispatcherMaxWorkerUsed should be called whenever the max worker count needs to be reset
+// ResetDispatcherMaxWorkerUsed should be called whenever the max worker count needs to be reset
 func (d *Dispatcher) ResetDispatcherMaxWorkerUsed() {
 	d.logger.LogDebug("Reseting max worker count")
 	d.resetMaxWorkerCount <- true
@@ -194,7 +191,7 @@ func NewDispatcher(dispatcherName string, options ...Option) *Dispatcher {
 		d.JobQueue = make(chan IJob, d.maxWorkers)
 	}
 	if d.logger == nil {
-		d.logger = gologger.NewLogger(gologger.SetLogLevel("ERROR"))
+		d.logger = gologger.NewLoggerFactory().CreateZerologLogger(gologger.WithLogLevel("ERROR"))
 	}
 	if d.latencyLogger == nil {
 		d.latencyLogger = gologger.NewRateLatencyLogger(gologger.SetLogger(d.logger))

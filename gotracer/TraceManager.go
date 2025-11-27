@@ -21,7 +21,7 @@ type CustomTracer struct {
 	collectorHost  string
 	traceContext   context.Context
 	traceProvider  *trace.TracerProvider
-	logger         *gologger.CustomLogger
+	logger         gologger.ILogger
 	sampler        trace.Sampler
 	propagator     propagation.TextMapPropagator
 	exporter       *otlptrace.Exporter
@@ -32,7 +32,7 @@ type CustomTracer struct {
 type Option func(t *CustomTracer)
 
 // SetLogger sets the logger for the CustomTracer
-func SetLogger(logger *gologger.CustomLogger) Option {
+func SetLogger(logger gologger.ILogger) Option {
 	return func(t *CustomTracer) { t.logger = logger }
 }
 

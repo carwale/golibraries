@@ -14,40 +14,36 @@ import (
 
 var dlConsumerInstanceCount int
 
-//DLConsumer holds the configuration for the DL consumer
+// DLConsumer holds the configuration for the DL consumer
 type DLConsumer struct {
-	InstanceID                      string
-	logger                          *gologger.CustomLogger
-	config                          *kafka.ConfigMap
-	BrokerServers                   string
-	Topics                          []string
-	ConsumerGroupName               string
-	Consumer                        *kafka.Consumer
-	CloseChannel                    chan os.Signal
-	RetryCount                      int           // default to 5
-	RetryDuration                   time.Duration // default to 24 hours
-	processor                       IProcessor
-	partitions                      []kafka.TopicPartition
-	partitionMessages               [12]*kafka.Message // At max only 12 partition to be allowed for Dead Letter
-	tickMillisecond                 int
-	offsetCommitMessageInterval     int // default to 1000
-	lastOffsetCommitMessageInterval int
+	InstanceID        string
+	logger            gologger.ILogger
+	config            *kafka.ConfigMap
+	BrokerServers     string
+	Topics            []string
+	ConsumerGroupName string
+	Consumer          *kafka.Consumer
+	CloseChannel      chan os.Signal
+	RetryCount        int           // default to 5
+	RetryDuration     time.Duration // default to 24 hours
+	processor         IProcessor
+	partitions        []kafka.TopicPartition
+	partitionMessages [12]*kafka.Message // At max only 12 partition to be allowed for Dead Letter
+	tickMillisecond   int
 }
 
 func (kc *DLConsumer) applyCustomConfig(customConfig map[string]interface{}) {
-	if customConfig != nil {
-		for k, v := range customConfig {
-			if k != "enable.auto.commit" {
-				kc.config.SetKey(k, v)
-			} else {
-				kc.logger.LogWarning("Offset auto commit is disabled. Please use `SetOffsetCommitMessageInterval` method to set message interval between subsequent offset commit.")
-			}
+	for k, v := range customConfig {
+		if k != "enable.auto.commit" {
+			kc.config.SetKey(k, v)
+		} else {
+			kc.logger.LogWarning("Offset auto commit is disabled. Please use `SetOffsetCommitMessageInterval` method to set message interval between subsequent offset commit.")
 		}
 	}
 }
 
 // NewKafkaDLConsumer Initialize a DLConsumer for provided configuration
-func NewKafkaDLConsumer(brokerServers string, consumerGroupName string, customConfig map[string]interface{}, logger *gologger.CustomLogger) *DLConsumer {
+func NewKafkaDLConsumer(brokerServers string, consumerGroupName string, customConfig map[string]interface{}, logger gologger.ILogger) *DLConsumer {
 	kc := &DLConsumer{
 		CloseChannel: make(chan os.Signal, 1),
 	}
@@ -95,7 +91,7 @@ func (kc *DLConsumer) getPartitions() []kafka.TopicPartition {
 
 // GetPartitions sets and return partitions of the subscribed topic
 func (kc *DLConsumer) GetPartitions() []kafka.TopicPartition {
-	if kc.partitions != nil && len(kc.partitions) > 0 {
+	if len(kc.partitions) > 0 {
 		return kc.partitions
 	}
 	kc.partitions = kc.getPartitions()
@@ -121,7 +117,7 @@ func (kc *DLConsumer) GetPartitionCount(topic string) int {
 func (kc *DLConsumer) isEligibleForProcess(msg *kafka.Message, partition int) bool {
 	if msg != nil {
 		initialInterval := int64(kc.RetryDuration) / int64(math.Pow(2, float64(kc.RetryCount))-1)
-		return time.Now().Sub(msg.Timestamp) > time.Duration(initialInterval*int64(math.Pow(2, float64(partition))))
+		return time.Since(msg.Timestamp) > time.Duration(initialInterval*int64(math.Pow(2, float64(partition))))
 	}
 	return false
 }
@@ -177,14 +173,14 @@ func (kc *DLConsumer) ReadPartition(partition int, timeoutMs int64) {
 	kc.partitionMessages[partition] = msg
 }
 
-//ReadMessageFromPartitions reads message from partition with a timeout in milliseconds
+// ReadMessageFromPartitions reads message from partition with a timeout in milliseconds
 func (kc *DLConsumer) ReadMessageFromPartitions(timeoutMs int) {
 	for i := range kc.GetPartitions() {
 		kc.ReadPartition(i, int64(timeoutMs/len(kc.partitions)))
 	}
 }
 
-//Start starts the dl consumer
+// Start starts the dl consumer
 func (kc *DLConsumer) Start(processor IProcessor) {
 	if len(kc.Topics) == 0 {
 		kc.logger.LogErrorWithoutError(fmt.Sprintf("No topic subscribed for %s", kc.InstanceID))
