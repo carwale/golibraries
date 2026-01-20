@@ -1,0 +1,36 @@
+version: 2
+updates:
+- package-ecosystem: gomod
+  directory: "/"
+  schedule:
+    interval: daily
+    time: "23:30"
+  pull-request-branch-name:
+    separator: "-"
+  open-pull-requests-limit: 20
+  ignore:
+  - dependency-name: google.golang.org/grpc
+    versions:
+    - 1.35.0
+    - 1.36.0
+    - 1.36.1
+  - dependency-name: k8s.io/client-go
+    versions:
+    - 0.20.2
+    - 0.20.3
+    - 0.20.4
+    - 0.20.5
+  - dependency-name: k8s.io/apimachinery
+    versions:
+    - 0.20.4
+    - 0.20.5
+    - 0.21.0-alpha.2
+    - 0.21.0-alpha.3
+    - 0.21.0-beta.0
+  - dependency-name: github.com/prometheus/client_golang
+    versions:
+    - 1.9.0
+  - dependency-name: github.com/hashicorp/consul
+    versions:
+    - 1.9.2
+    - 1.9.3
