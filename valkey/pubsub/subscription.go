@@ -54,10 +54,16 @@ type subscription struct {
 	closing   atomic.Bool
 	receivers []*receiveLoop
 	loops     sync.WaitGroup
-	events    chan func()
+	dispatchW sync.WaitGroup
 	stop      chan struct{}
 	done      chan struct{}
 	once      sync.Once
+
+	// events is an unbounded queue of lifecycle callbacks. emit runs on valkey-go's connection
+	// goroutine, which must never block, so it only appends and signals.
+	eventsMu sync.Mutex
+	events   []func()
+	signal   chan struct{}
 
 	mu        sync.Mutex
 	confirmed map[string]bool
@@ -76,7 +82,7 @@ func newSubscription(owner *subscriber, names []string, handler Handler, o subsc
 		opts:      o,
 		ctx:       ctx,
 		cancel:    cancel,
-		events:    make(chan func(), eventBuffer),
+		signal:    make(chan struct{}, 1),
 		stop:      make(chan struct{}),
 		done:      make(chan struct{}),
 		confirmed: make(map[string]bool, len(names)),
@@ -89,6 +95,9 @@ func (s *subscription) Channels() []string { return append([]string(nil), s.name
 
 func (s *subscription) Done() <-chan struct{} { return s.done }
 
+// Close unsubscribes, waits for the receive loops to stop and for a running callback to return.
+// Callbacks still queued are dropped. Do not call Close from a handler or callback: it would wait
+// for itself. Use `go sub.Close()` there instead.
 func (s *subscription) Close() {
 	s.once.Do(func() {
 		// Cancelling Receive only detaches the local handler; the server keeps the subscription
@@ -103,13 +112,17 @@ func (s *subscription) Close() {
 		s.cancel()
 		s.loops.Wait()
 		close(s.stop)
+		s.dispatchW.Wait()
 		s.owner.remove(s)
 		close(s.done)
 	})
 }
 
+// run starts the dispatcher and the receive loops. The subscriber calls it under its lock, before
+// the subscription can be seen by Close, so receivers and the WaitGroups are set before any Wait.
 func (s *subscription) run(loops []*receiveLoop) {
 	s.receivers = loops
+	s.dispatchW.Add(1)
 	go s.dispatch()
 	for _, l := range loops {
 		s.loops.Add(1)
@@ -117,22 +130,50 @@ func (s *subscription) run(loops []*receiveLoop) {
 	}
 }
 
-// dispatch runs lifecycle callbacks one at a time, in order, off the connection goroutine.
+// dispatch runs lifecycle callbacks one at a time, in order, on its own goroutine, so a slow
+// callback never holds up message delivery.
 func (s *subscription) dispatch() {
+	defer s.dispatchW.Done()
 	for {
 		select {
-		case fn := <-s.events:
-			fn()
+		case <-s.signal:
 		case <-s.stop:
 			return
+		}
+		for {
+			s.eventsMu.Lock()
+			if len(s.events) == 0 {
+				s.events = nil // release the backing array after a burst
+				s.eventsMu.Unlock()
+				break
+			}
+			fn := s.events[0]
+			s.events[0] = nil
+			s.events = s.events[1:]
+			s.eventsMu.Unlock()
+
+			select {
+			case <-s.stop:
+				return
+			default:
+			}
+			fn()
 		}
 	}
 }
 
+// emit queues a callback. It never blocks: it runs on valkey-go's connection goroutine (through the
+// subscription hook), and blocking there would stop every message and command on the connection.
 func (s *subscription) emit(fn func()) {
+	if s.ctx.Err() != nil {
+		return
+	}
+	s.eventsMu.Lock()
+	s.events = append(s.events, fn)
+	s.eventsMu.Unlock()
 	select {
-	case s.events <- fn:
-	case <-s.ctx.Done():
+	case s.signal <- struct{}{}:
+	default: // a wake-up is already pending
 	}
 }
 
@@ -182,7 +223,7 @@ func (s *subscription) receive(l *receiveLoop) {
 	}
 }
 
-// confirm runs on the connection goroutine for every subscribe confirmation.
+// confirm runs on the connection goroutine for every subscribe confirmation. It must not block.
 func (s *subscription) confirm(l *receiveLoop, name string) {
 	s.mu.Lock()
 	first := !s.confirmed[name]

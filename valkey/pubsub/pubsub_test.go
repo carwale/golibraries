@@ -2,7 +2,9 @@ package pubsub
 
 import (
 	"context"
+	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -208,6 +210,113 @@ func TestBackoffBounds(t *testing.T) {
 		d := backoff(attempt, 100*time.Millisecond, time.Second)
 		if d < 50*time.Millisecond || d > time.Second {
 			t.Fatalf("backoff(%d) = %v out of bounds", attempt, d)
+		}
+	}
+}
+
+// Lifecycle callbacks run on their own goroutine: a slow one must neither stall the connection (no
+// messages, no confirmations) nor block Subscribe, however many events queue up behind it.
+func TestSlowCallbacksDoNotBlockTheConnection(t *testing.T) {
+	pub, sub, _ := newTestPubSub(t)
+
+	channels := make([]string, 100) // more events than any fixed buffer
+	for i := range channels {
+		channels[i] = fmt.Sprintf("ch:%d", i)
+	}
+	release := make(chan struct{})
+	defer close(release)
+	got := make(chan Message, 1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	s, err := sub.Subscribe(ctx, channels, func(m Message) { got <- m },
+		OnSubscribed(func(string) { <-release }))
+	if err != nil {
+		t.Fatalf("Subscribe with a blocked callback: %v", err)
+	}
+	defer func() { go s.Close() }() // Close waits for the blocked callback
+
+	if _, err := pub.Publish(context.Background(), "ch:99", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	if m := expectMessage(t, got); string(m.Payload) != "x" {
+		t.Fatalf("message = %+v", m)
+	}
+}
+
+// Close must not return while a callback is still running.
+func TestCloseWaitsForRunningCallback(t *testing.T) {
+	_, sub, _ := newTestPubSub(t)
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var running atomic.Bool
+	s, err := sub.Subscribe(context.Background(), []string{"ch"}, func(Message) {},
+		OnSubscribed(func(string) {
+			running.Store(true)
+			close(entered)
+			<-release
+			running.Store(false)
+		}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+
+	closed := make(chan struct{})
+	go func() { s.Close(); close(closed) }()
+	select {
+	case <-closed:
+		t.Fatal("Close returned while a callback was running")
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close did not return after the callback finished")
+	}
+	if running.Load() {
+		t.Fatal("callback still running after Close")
+	}
+	select {
+	case <-s.Done():
+	default:
+		t.Fatal("Done should be closed after Close")
+	}
+}
+
+// Closing the subscriber while a Subscribe is starting must not hang or leak (run with -race to
+// check the ordering).
+func TestSubscriberCloseRacesSubscribe(t *testing.T) {
+	_, mr := testutil.NewClient(t)
+	for i := 0; i < 30; i++ {
+		opt := testutil.Option(mr.Addr())
+		opt.DisableRetry = true
+		client, err := valkeygo.NewClient(opt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sub := NewSubscriber(client, WithSubscriberLogger(testutil.DiscardLogger()))
+
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if s, err := sub.Subscribe(ctx, []string{"a", "b"}, func(Message) {}); err == nil {
+				s.Close()
+			}
+		}()
+		go func() { defer wg.Done(); sub.Close() }()
+
+		done := make(chan struct{})
+		go func() { wg.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("iteration %d: Subscribe and Close did not both return", i)
 		}
 	}
 }

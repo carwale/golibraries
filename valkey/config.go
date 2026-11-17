@@ -23,6 +23,7 @@ const (
 	defaultPort                 = 6379
 	defaultRequestTimeout       = 250 * time.Millisecond
 	defaultRefreshCacheDuration = 10 * time.Second
+	defaultLoadTimeout          = 5 * time.Second
 )
 
 // Config holds the connection settings. It mirrors ValkeyCacheConfig in AEPLCore.Valkey.
@@ -61,8 +62,14 @@ type Config struct {
 	RequestTimeout time.Duration
 	// RefreshCacheDuration is the TTL used by soft expire and the critical-read sentinel. Default 10s.
 	RefreshCacheDuration time.Duration
-	// ShardedPubSub makes Publish use SPUBLISH and Subscribe use SSUBSCRIBE (Valkey 7+).
-	// Defaults to the value of IsCluster: classic PUBLISH in a cluster fans out to every node.
+	// LoadTimeout bounds a load shared by concurrent cache.GetOrLoad callers, when the first
+	// caller's deadline is shorter. Default 5s.
+	LoadTimeout time.Duration
+	// ShardedPubSub makes Publish use SPUBLISH and Subscribe use SSUBSCRIBE (Valkey 7+). Required,
+	// with no default: PUBLISH and SPUBLISH are separate namespaces, so a mismatch drops messages
+	// silently. Sharded scales better in a cluster (classic PUBLISH fans out to every node), but a
+	// classic publisher (for example a C# StackExchange.Redis service) or a PSubscribe consumer on
+	// the same channel will not see sharded messages. Every service on a channel must agree.
 	ShardedPubSub *bool
 }
 
@@ -79,6 +86,9 @@ func (c *Config) Validate() error {
 	}
 	if c.IsCluster == nil {
 		return errors.New("valkey: IsCluster is required (true for cluster mode, false for standalone)")
+	}
+	if c.ShardedPubSub == nil {
+		return errors.New("valkey: ShardedPubSub is required (true for SPUBLISH/SSUBSCRIBE, false for classic PUBLISH/SUBSCRIBE; every service on a channel must agree)")
 	}
 	if c.Port == 0 {
 		c.Port = defaultPort
@@ -98,8 +108,8 @@ func (c *Config) Validate() error {
 	if c.RefreshCacheDuration <= 0 {
 		c.RefreshCacheDuration = defaultRefreshCacheDuration
 	}
-	if c.ShardedPubSub == nil {
-		c.ShardedPubSub = Bool(*c.IsCluster)
+	if c.LoadTimeout <= 0 {
+		c.LoadTimeout = defaultLoadTimeout
 	}
 	c.ClusterName = strings.ToLower(strings.TrimSpace(c.ClusterName))
 

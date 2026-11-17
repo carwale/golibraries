@@ -38,6 +38,14 @@ func TestStoreStringsAndKeys(t *testing.T) {
 	if ok, err := s.Expire(ctx, "k", 5*time.Second); err != nil || !ok || mr.TTL("k") != 5*time.Second {
 		t.Fatalf("Expire = %v, %v, ttl %v", ok, err, mr.TTL("k"))
 	}
+	for _, ttl := range []time.Duration{0, -time.Second} {
+		if ok, err := s.Expire(ctx, "k", ttl); !errors.Is(err, ErrInvalidTTL) || ok {
+			t.Fatalf("Expire(ttl %v) = %v, %v, want ErrInvalidTTL", ttl, ok, err)
+		}
+	}
+	if !mr.Exists("k") {
+		t.Fatal("Expire with a non-positive ttl must not delete the key")
+	}
 	if ok, _ := s.Expire(ctx, "missing", time.Second); ok {
 		t.Fatal("Expire on a missing key should report false")
 	}
@@ -161,6 +169,10 @@ func TestStoreSetsAndSortedSets(t *testing.T) {
 	if r, _ = s.ZRangeByScore(ctx, "z", "-inf", "+inf", 1, 1); len(r) != 1 || r[0].Member != "b" {
 		t.Fatalf("ZRangeByScore limit = %+v", r)
 	}
+	all, _ := s.ZRangeByScore(ctx, "z", "-inf", "+inf", 0, 0)
+	if r, _ = s.ZRangeByScore(ctx, "z", "-inf", "+inf", 1, 0); len(r) != len(all)-1 || r[0].Member != "b" {
+		t.Fatalf("ZRangeByScore offset without count = %+v, want all but the first of %+v", r, all)
+	}
 	if n, _ := s.ZRem(ctx, "z", "a"); n != 1 {
 		t.Fatalf("ZRem = %d", n)
 	}
@@ -195,12 +207,12 @@ func TestStoreRunScript(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunScript: %v", err)
 	}
-	if n, _ := res.AsInt64(); n != 0 || mr.Exists(lastseen) {
-		t.Fatal("another live device remains: lastseen must not be written")
+	if res != int64(0) || mr.Exists(lastseen) {
+		t.Fatalf("another live device remains: lastseen must not be written (reply %v)", res)
 	}
-	res, _ = s.RunScript(ctx, closeScript, []string{presence, lastseen}, []string{"c2", "1700000001", "podA", "podB"})
-	if n, _ := res.AsInt64(); n != 1 {
-		t.Fatal("last device closed: script should write lastseen")
+	n, err := s.RunScriptInt64(ctx, closeScript, []string{presence, lastseen}, []string{"c2", "1700000001", "podA", "podB"})
+	if err != nil || n != 1 {
+		t.Fatalf("last device closed: script should write lastseen (reply %d, %v)", n, err)
 	}
 	if v, _ := mr.Get(lastseen); v != "1700000001" {
 		t.Fatalf("lastseen = %q", v)
@@ -211,6 +223,25 @@ func TestStoreRunScript(t *testing.T) {
 	}
 	if _, err := s.RunScript(ctx, nil, nil, nil); err == nil {
 		t.Fatal("nil script should fail")
+	}
+
+	// Decoded replies, no valkey-go types.
+	if v, err := s.RunScript(ctx, NewScript("return nil"), nil, nil); v != nil || err != nil {
+		t.Fatalf("nil reply = %v, %v, want nil, nil", v, err)
+	}
+	if v, err := s.RunScriptString(ctx, NewScript("return 'ok'"), nil, nil); v != "ok" || err != nil {
+		t.Fatalf("RunScriptString = %q, %v", v, err)
+	}
+	if _, err := s.RunScriptString(ctx, NewScript("return nil"), nil, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("RunScriptString nil reply err = %v, want ErrNotFound", err)
+	}
+	got, err := s.RunScriptStrings(ctx, NewScript("return {KEYS[1], ARGV[1]}"), []string{"k"}, []string{"a"})
+	if err != nil || len(got) != 2 || got[0] != "k" || got[1] != "a" {
+		t.Fatalf("RunScriptStrings = %v, %v", got, err)
+	}
+	arr, err := s.RunScript(ctx, NewScript("return {1, 'x'}"), nil, nil)
+	if list, ok := arr.([]any); err != nil || !ok || len(list) != 2 || list[0] != int64(1) || list[1] != "x" {
+		t.Fatalf("RunScript array = %#v, %v", arr, err)
 	}
 }
 

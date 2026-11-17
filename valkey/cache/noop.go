@@ -14,10 +14,12 @@ const noOpMessage = "Could not connect to Valkey."
 // NoOp is an ICache that never touches Valkey. Use it when connecting fails and the service should
 // keep running without a cache. Every call logs "Could not connect to Valkey." so the outage is
 // visible, and reports a miss carrying ErrNoConnection, so GetOrLoad still calls the loader (and
-// does not try to store the result).
+// does not try to store the result). Concurrent GetOrLoad calls for the same key still share one
+// load, which matters most while every read goes to the database.
 type NoOp struct {
 	logger     gologger.ILogger
 	transcoder transcoder.ITranscoder
+	loadGroups
 }
 
 // NewNoOp returns a NoOp cache. A nil logger uses the gologger zerolog logger; a nil transcoder
@@ -50,6 +52,9 @@ func (n *NoOp) GetWithStatus(context.Context, string) Result {
 
 // Set does nothing and returns false.
 func (n *NoOp) Set(context.Context, string, []byte, time.Duration) bool { n.log(); return false }
+
+// SetNX does nothing and returns false.
+func (n *NoOp) SetNX(context.Context, string, []byte, time.Duration) bool { n.log(); return false }
 
 // Delete does nothing and returns false.
 func (n *NoOp) Delete(context.Context, string) bool { n.log(); return false }

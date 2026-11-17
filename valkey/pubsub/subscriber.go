@@ -18,7 +18,6 @@ const (
 	defaultMaxBackoff     = 5 * time.Second
 	defaultConfirmTimeout = 10 * time.Second
 	unsubscribeTimeout    = time.Second
-	eventBuffer           = 64
 )
 
 var (
@@ -43,6 +42,16 @@ type ISubscriber interface {
 	// Subscribe subscribes to channels (SSUBSCRIBE when sharded, SUBSCRIBE otherwise) and blocks
 	// until Valkey has confirmed every channel or ctx ends (10s when ctx has no deadline). The
 	// subscription then keeps running, resubscribing after drops, until Close.
+	//
+	// Readiness is all or nothing: if any channel is not confirmed in time (an ACL deny, for
+	// example) the whole subscription is closed and an error returned. Subscribe channels that can
+	// fail independently in separate calls. When sharded, each channel gets its own receive loop and
+	// subscribe round trip, so keep the channel count per subscription small (one per pod, not one
+	// per user).
+	//
+	// handler runs on the connection goroutine, in order, and must not block. Lifecycle callbacks
+	// (OnSubscribed, OnDisconnected, OnResubscribed) run one at a time on a separate goroutine, so
+	// they may be slow without delaying messages.
 	Subscribe(ctx context.Context, channels []string, handler Handler, opts ...SubscribeOption) (ISubscription, error)
 	// PSubscribe subscribes to glob patterns (for example "ch:pod:*") with PSUBSCRIBE. Valkey has no
 	// sharded pattern subscription, so it only receives messages sent with classic PUBLISH; in a
@@ -132,16 +141,19 @@ func (s *subscriber) start(ctx context.Context, names []string, loops []*receive
 		return nil, ErrSubscriberClosed
 	}
 	sub := newSubscription(s, names, handler, o)
+	// Start it before releasing the lock: a concurrent Close then sees it fully started.
+	sub.run(loops)
 	s.subs[sub] = struct{}{}
 	s.mu.Unlock()
-
-	sub.run(loops)
 
 	wait, cancel := common.WithTimeout(ctx, defaultConfirmTimeout)
 	defer cancel()
 	select {
 	case <-sub.ready:
 		return sub, nil
+	case <-sub.done:
+		// The subscriber was closed while this subscription was starting.
+		return nil, ErrSubscriberClosed
 	case <-wait.Done():
 		sub.Close()
 		return nil, fmt.Errorf("valkey: waiting for subscription to %s: %w", strings.Join(names, ", "), wait.Err())

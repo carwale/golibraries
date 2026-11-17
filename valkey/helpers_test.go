@@ -22,7 +22,7 @@ func localConfig(t *testing.T, addr string) Config {
 	if err != nil {
 		t.Fatalf("port %q: %v", portStr, err)
 	}
-	return Config{Host: host, Port: port, IsCluster: Bool(false), TLS: Bool(false), AuthMode: AuthNone}
+	return Config{Host: host, Port: port, IsCluster: Bool(false), ShardedPubSub: Bool(false), TLS: Bool(false), AuthMode: AuthNone}
 }
 
 // newTestClient starts miniredis and connects a Client to it without auth or TLS.

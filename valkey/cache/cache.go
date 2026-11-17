@@ -17,7 +17,6 @@ import (
 	"github.com/carwale/golibraries/valkey/internal/common"
 	"github.com/carwale/golibraries/valkey/transcoder"
 	valkeygo "github.com/valkey-io/valkey-go"
-	"golang.org/x/sync/singleflight"
 )
 
 // CriticalSentinel is the value ExpireWithCriticalRead stores in place of a cached value. A reader
@@ -27,6 +26,10 @@ const CriticalSentinel = "_valkey_critical_"
 
 // DefaultRefreshDuration is the default TTL for soft expire and the critical-read sentinel.
 const DefaultRefreshDuration = 10 * time.Second
+
+// DefaultLoadTimeout bounds a shared GetOrLoad / MultiGetOrLoad load when the caller's deadline is
+// shorter (or absent). See WithLoadTimeout.
+const DefaultLoadTimeout = 5 * time.Second
 
 var criticalSentinel = []byte(CriticalSentinel)
 
@@ -59,6 +62,9 @@ type ICache interface {
 	GetWithStatus(ctx context.Context, key string) Result
 	// Set stores value. A ttl of 0 or less stores it without expiry.
 	Set(ctx context.Context, key string, value []byte, ttl time.Duration) bool
+	// SetNX stores value only if the key does not exist and reports whether it was stored. GetOrLoad
+	// uses it after a miss, so a slow load never overwrites a newer value or the critical sentinel.
+	SetNX(ctx context.Context, key string, value []byte, ttl time.Duration) bool
 	// Delete removes the key and reports whether it existed.
 	Delete(ctx context.Context, key string) bool
 	// Exists reports whether the key exists.
@@ -69,14 +75,15 @@ type ICache interface {
 	// MultiGetWithStatus is MultiGet with a status per requested key.
 	MultiGetWithStatus(ctx context.Context, keys []string) map[string]Result
 
-	// Expire soft-expires the key: it stays readable for the refresh duration (default 10s) and
-	// then expires, instead of being deleted now. Covers the replica-lag window after a write.
+	// Expire soft-expires the key: it stays readable for at most the refresh duration (default 10s)
+	// and then expires, instead of being deleted now. Covers the replica-lag window after a write. A
+	// key whose remaining TTL is already shorter keeps it (PEXPIRE ... LT, Valkey 7+).
 	Expire(ctx context.Context, key string) bool
-	// ExpireWithDelay is Expire with a custom TTL.
+	// ExpireWithDelay is Expire with a custom TTL. A ttl of 0 or less deletes the key now.
 	ExpireWithDelay(ctx context.Context, key string, ttl time.Duration) bool
 	// ExpireWithoutDelay deletes the key now.
 	ExpireWithoutDelay(ctx context.Context, key string) bool
-	// ExpireMultiple soft-expires many keys in one pipeline.
+	// ExpireMultiple soft-expires many keys in one pipeline, like Expire.
 	ExpireMultiple(ctx context.Context, keys []string) bool
 	// ExpireMultipleWithoutDelay deletes many keys in one pipeline.
 	ExpireMultipleWithoutDelay(ctx context.Context, keys []string) bool
@@ -94,7 +101,7 @@ type valkeyCache struct {
 	refresh    time.Duration
 	logger     gologger.ILogger
 	transcoder transcoder.ITranscoder
-	group      singleflight.Group
+	loadGroups
 }
 
 var _ ICache = (*valkeyCache)(nil)
@@ -118,8 +125,6 @@ func New(client valkeygo.Client, opts ...Option) ICache {
 }
 
 func (c *valkeyCache) Transcoder() transcoder.ITranscoder { return c.transcoder }
-
-func (c *valkeyCache) loadGroup() *singleflight.Group { return &c.group }
 
 func (c *valkeyCache) logErr(op, key string, err error) {
 	c.logger.LogError("valkey: "+op+" failed for key: "+key, err)
@@ -169,6 +174,25 @@ func (c *valkeyCache) Set(ctx context.Context, key string, value []byte, ttl tim
 
 	if err := c.client.Do(ctx, common.SetCmd(c.client, key, value, ttl)).Error(); err != nil {
 		c.logErr("Set", key, err)
+		return false
+	}
+	return true
+}
+
+func (c *valkeyCache) SetNX(ctx context.Context, key string, value []byte, ttl time.Duration) bool {
+	if common.Blank(key) {
+		c.logErr("SetNX", key, ErrEmptyKey)
+		return false
+	}
+	ctx, cancel := common.WithTimeout(ctx, c.timeout)
+	defer cancel()
+
+	err := c.client.Do(ctx, common.SetNXCmd(c.client, key, value, ttl)).Error()
+	if valkeygo.IsValkeyNil(err) {
+		return false // the key already exists
+	}
+	if err != nil {
+		c.logErr("SetNX", key, err)
 		return false
 	}
 	return true
@@ -260,8 +284,10 @@ func (c *valkeyCache) Expire(ctx context.Context, key string) bool {
 	return c.ExpireWithDelay(ctx, key, c.refresh)
 }
 
-// ExpireWithDelay uses PEXPIRE, which shortens the TTL atomically without rewriting the value. The
-// C# library re-reads and re-stores the value; the visible result is the same.
+// ExpireWithDelay uses PEXPIRE with LT: the TTL is set to ttl unless the key already expires
+// sooner, so invalidating never keeps stale data longer than it would have lived anyway (a key
+// without a TTL counts as infinite and gets ttl). The C# library re-stores the value with the new
+// TTL, which can extend it.
 func (c *valkeyCache) ExpireWithDelay(ctx context.Context, key string, ttl time.Duration) bool {
 	if common.Blank(key) {
 		c.logErr("ExpireWithDelay", key, ErrEmptyKey)
@@ -274,7 +300,7 @@ func (c *valkeyCache) ExpireWithDelay(ctx context.Context, key string, ttl time.
 	defer cancel()
 
 	// A missing key counts as success, as in the C# library.
-	cmd := c.client.B().Pexpire().Key(key).Milliseconds(common.DurationMillis(ttl)).Build()
+	cmd := c.client.B().Pexpire().Key(key).Milliseconds(common.DurationMillis(ttl)).Lt().Build()
 	if err := c.client.Do(ctx, cmd).Error(); err != nil {
 		c.logErr("ExpireWithDelay", key, err)
 		return false
@@ -300,7 +326,7 @@ func (c *valkeyCache) ExpireWithoutDelay(ctx context.Context, key string) bool {
 func (c *valkeyCache) ExpireMultiple(ctx context.Context, keys []string) bool {
 	ms := common.DurationMillis(c.refresh)
 	return c.multi(ctx, "ExpireMultiple", keys, func(k string) valkeygo.Completed {
-		return c.client.B().Pexpire().Key(k).Milliseconds(ms).Build()
+		return c.client.B().Pexpire().Key(k).Milliseconds(ms).Lt().Build()
 	})
 }
 

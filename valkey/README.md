@@ -47,10 +47,11 @@ import (
 
 client, err := valkey.NewClient(valkey.Config{
     Host:        "master.my-cache.aps1.cache.amazonaws.com",
-    IsCluster:   valkey.Bool(false),   // required: true for ElastiCache cluster mode
-    Username:    "my-iam-user",        // IAM user attached to the cache
-    ClusterName: "my-cache",           // lowercased automatically
-    Region:      "ap-south-1",
+    IsCluster:     valkey.Bool(false), // required: true for ElastiCache cluster mode
+    ShardedPubSub: valkey.Bool(false), // required: must match every other service on your channels
+    Username:      "my-iam-user",      // IAM user attached to the cache
+    ClusterName:   "my-cache",         // lowercased automatically
+    Region:        "ap-south-1",
 }, valkey.WithLogger(logger))
 if err != nil {
     // Keep running without a cache, as the C# library does:
@@ -69,7 +70,8 @@ defer client.Close()
 | `Username`, `ClusterName`, `Region` | — | Required for IAM. `Serverless: true` for ElastiCache Serverless. |
 | `RequestTimeout` | `250ms` | Applied when the caller's context has no deadline. |
 | `RefreshCacheDuration` | `10s` | TTL for soft expire and the critical-read sentinel. |
-| `ShardedPubSub` | `IsCluster` | `SPUBLISH`/`SSUBSCRIBE` instead of `PUBLISH`/`SUBSCRIBE`. Needs Valkey 7+. |
+| `LoadTimeout` | `5s` | Bounds a `GetOrLoad` load shared by concurrent callers (see below). |
+| `ShardedPubSub` | — | Required, no default. `SPUBLISH`/`SSUBSCRIBE` instead of `PUBLISH`/`SUBSCRIBE` (Valkey 7+). The two are separate namespaces: every publisher and subscriber of a channel must agree, and C# services (StackExchange.Redis) publish classic by default. |
 
 IAM credentials come from the AWS default chain (IRSA, ECS/EC2 role, environment). Pass `valkey.WithAWSCredentials`
 or `valkey.WithAWSConfig` to override. The service role needs `elasticache:Connect` on the cache and user.
@@ -77,7 +79,8 @@ or `valkey.WithAWSConfig` to override. The service role needs `elasticache:Conne
 Local Valkey:
 
 ```go
-valkey.NewClient(valkey.Config{Host: "localhost", IsCluster: valkey.Bool(false), TLS: valkey.Bool(false), AuthMode: valkey.AuthNone})
+valkey.NewClient(valkey.Config{Host: "localhost", IsCluster: valkey.Bool(false), ShardedPubSub: valkey.Bool(false),
+    TLS: valkey.Bool(false), AuthMode: valkey.AuthNone})
 ```
 
 ## Cache (`valkey/cache`)
@@ -101,7 +104,7 @@ c.ExpireWithCriticalRead(ctx, "foo:42")                       // on write
 dto, err := cache.GetOrLoadCritical(ctx, c, "foo:42", 2*time.Hour,
     replicaLoader, primaryLoader)                               // on read
 
-// Soft expire: value stays readable for RefreshCacheDuration, then expires
+// Soft expire: value stays readable for at most RefreshCacheDuration, then expires
 c.Expire(ctx, "foo:42")
 c.ExpireWithDelay(ctx, "foo:42", 30*time.Second)
 c.ExpireWithoutDelay(ctx, "foo:42")                           // hard delete
@@ -111,7 +114,7 @@ hits := cache.MultiGetAs[MyDto](ctx, c, []string{"k1", "k2"})
 all, err := cache.MultiGetOrLoad(ctx, c, map[string]cache.Callback[MyDto]{
     "k1": {Load: loadK1, TTL: time.Hour},
     "k2": {Load: loadK2, CriticalLoad: loadK2Primary, TTL: time.Hour},
-})
+}, cache.WithMaxConcurrentLoads(8)) // default 8
 ```
 
 | C# (`IValkeyCache`) | Go |
@@ -129,18 +132,27 @@ all, err := cache.MultiGetOrLoad(ctx, c, map[string]cache.Callback[MyDto]{
 Behaviour notes:
 
 - Errors are logged and treated as misses. When Valkey is unreachable, `GetOrLoad` calls the loader and returns its
-  value **without** writing it back. A loader error is returned and nothing is cached.
-- Concurrent misses for the same key in one process share a single loader call.
+  value **without** writing it back. A loader error is returned and nothing is cached; a loader panic is returned as
+  an error.
+- After a miss, the loaded value is stored with `SET NX`: a write (or `ExpireWithCriticalRead`) that lands while a
+  slow replica read is in flight wins over the stale result. The critical path overwrites the sentinel.
+- Concurrent `GetOrLoad` calls for the same key and type in one process share a single load, also while Valkey is
+  down. The load is detached from any one caller's cancellation and bounded by `LoadTimeout` or the first caller's
+  deadline, whichever is later; each caller stops waiting when its own context ends. Callers sharing a load get the
+  same value, so treat maps, slices and pointers as read-only.
+- `MultiGetOrLoad` runs at most 8 loaders at once (`cache.WithMaxConcurrentLoads`).
 - The critical-read sentinel is `_valkey_critical_` (`cache.CriticalSentinel`), the same as the C# library, so Go and
   C# services can share keys.
-- Soft expire uses `PEXPIRE` (atomic) rather than the C# read-and-rewrite; the visible result is the same.
+- Soft expire uses `PEXPIRE ... LT` (Valkey 7+): it never extends a TTL that is already shorter, so invalidating
+  after a write cannot keep stale data longer. The C# library re-writes the value with the refresh TTL, which can.
 - Values are JSON by default. `System.Text.Json` writes PascalCase property names, so give Go structs shared with C#
   matching `json` tags. Replace the encoding with `valkey.WithTranscoder`.
 
 ## Store (`valkey/store`)
 
 Valkey as the source of truth. No sentinel handling, nothing swallowed; reads of a missing key, field or member return
-`store.ErrNotFound`. A ttl of 0 means no expiry.
+`store.ErrNotFound`. In `Set`/`SetNX` a ttl of 0 means no expiry; `Expire` rejects it with `store.ErrInvalidTTL`
+(use `Persist` or `Del` to say what you mean).
 
 ```go
 s := client.Store()
@@ -156,7 +168,7 @@ fields, err := s.HGetAll(ctx, "presence:{carwale:u_8f21}")
 
 // Sets and sorted sets
 s.SAdd(ctx, "dealer:agents", "a_17")
-members, err := s.ZRangeByScore(ctx, "scores", "-inf", "+inf", 0, 0)
+members, err := s.ZRangeByScore(ctx, "scores", "-inf", "+inf", 0, 0) // offset, count (0 = no limit)
 
 // Typed
 err = store.SetAs(ctx, s, "session:1", session, time.Hour)
@@ -164,11 +176,14 @@ session, err := store.GetAs[Session](ctx, s, "session:1")
 
 // Lua scripts (EVALSHA with EVAL fallback). Create once, reuse.
 var closeScript = store.NewScript(`...`)
-res, err := s.RunScript(ctx, closeScript, []string{presenceKey, lastSeenKey}, args)
+n, err := s.RunScriptInt64(ctx, closeScript, []string{presenceKey, lastSeenKey}, args)
+// also RunScript (decoded any), RunScriptString, RunScriptStrings
 ```
 
 In cluster mode every key a script touches must be in one slot: use `{hash tags}`. `MGet`, `Del` and `Exists`
-accept keys in different slots.
+accept keys in different slots but are **not atomic**: they run per slot or per key, and on a partial failure `Del`
+and `Exists` return the count that succeeded with the joined errors, without saying which keys failed. Retry key by
+key, or keep related keys in one slot and use a script when you need all-or-nothing.
 
 ## Pub/sub (`valkey/pubsub`)
 
@@ -205,11 +220,17 @@ Things to know:
 - Pub/sub is at-most-once. While the subscription connection is down, messages are lost; `OnDisconnected` and
   `OnResubscribed` tell you when to catch up from the source of truth.
 - The handler runs on the connection's read goroutine, in publish order. It must not block. Lifecycle callbacks run
-  on a separate goroutine, in order, and should also return quickly.
-- In sharded mode each channel gets its own `SSUBSCRIBE` (channels must share a slot otherwise).
+  one at a time on a separate goroutine, from an unbounded queue, so a slow `OnResubscribed` (a paced resync) never
+  stalls message delivery or the connection.
+- Don't call `Close` from a handler or callback (it would wait for itself); use `go s.Close()`.
+- In sharded mode each channel gets its own receive loop and `SSUBSCRIBE` round trip. Keep the channel count per
+  subscription small (one per pod, not one per user).
+- `Subscribe` readiness is all or nothing: if any channel is not confirmed in time, the subscription is closed and an
+  error returned. Subscribe channels that can fail independently in separate calls.
 - Valkey has no sharded pattern subscription. `PSubscribe` is always classic and does **not** see `SPUBLISH`
   messages; in a cluster, publish channels you want to observe by pattern with `pubsub.WithClassicPublish()`.
-- `ISubscription.Close` sends `UNSUBSCRIBE`/`SUNSUBSCRIBE`/`PUNSUBSCRIBE` and waits for the loops to stop.
+- `ISubscription.Close` sends `UNSUBSCRIBE`/`SUNSUBSCRIBE`/`PUNSUBSCRIBE`, waits for the loops to stop and for a
+  running callback to return; callbacks still queued are dropped.
   `ISubscriber.Close` closes every subscription and its connections; `Client.Close` does not close subscribers.
 
 ## Using the packages without `valkey.Client`
@@ -232,7 +253,8 @@ Unit tests run against [miniredis](https://github.com/alicebob/miniredis):
 go test ./valkey/...
 ```
 
-Sharded pub/sub and cross-slot reads need a real Valkey 7+:
+Sharded pub/sub, cross-slot reads and IAM auth are not covered by miniredis. Run the integration tests against a
+real Valkey 7+ (ideally a cluster) before relying on them:
 
 ```
 VALKEY_ADDR=localhost:6379 go test -tags integration ./valkey/...

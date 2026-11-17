@@ -8,11 +8,12 @@ import (
 
 func iamConfig() Config {
 	return Config{
-		Host:        "master.my-cache.aps1.cache.amazonaws.com",
-		IsCluster:   Bool(false),
-		Username:    "my-iam-user",
-		ClusterName: "My-Cache",
-		Region:      "ap-south-1",
+		Host:          "master.my-cache.aps1.cache.amazonaws.com",
+		IsCluster:     Bool(false),
+		ShardedPubSub: Bool(false),
+		Username:      "my-iam-user",
+		ClusterName:   "My-Cache",
+		Region:        "ap-south-1",
 	}
 }
 
@@ -39,18 +40,6 @@ func TestConfigValidateDefaults(t *testing.T) {
 	if cfg.RefreshCacheDuration != 10*time.Second {
 		t.Errorf("RefreshCacheDuration = %v", cfg.RefreshCacheDuration)
 	}
-	if cfg.ShardedPubSub == nil || *cfg.ShardedPubSub {
-		t.Error("ShardedPubSub should default to IsCluster (false)")
-	}
-
-	cluster := iamConfig()
-	cluster.IsCluster = Bool(true)
-	if err := cluster.Validate(); err != nil {
-		t.Fatalf("Validate cluster: %v", err)
-	}
-	if !*cluster.ShardedPubSub {
-		t.Error("ShardedPubSub should default to true in cluster mode")
-	}
 }
 
 func TestConfigValidateErrors(t *testing.T) {
@@ -61,6 +50,7 @@ func TestConfigValidateErrors(t *testing.T) {
 	}{
 		{"missing host", func(c *Config) { c.Host = " " }, "Host"},
 		{"missing IsCluster", func(c *Config) { c.IsCluster = nil }, "IsCluster"},
+		{"missing ShardedPubSub", func(c *Config) { c.ShardedPubSub = nil }, "ShardedPubSub"},
 		{"bad port", func(c *Config) { c.Port = 70000 }, "Port"},
 		{"iam without tls", func(c *Config) { c.TLS = Bool(false) }, "TLS"},
 		{"iam without username", func(c *Config) { c.Username = "" }, "Username"},
@@ -82,11 +72,11 @@ func TestConfigValidateErrors(t *testing.T) {
 }
 
 func TestConfigValidateLocalModes(t *testing.T) {
-	none := Config{Host: "localhost", IsCluster: Bool(false), TLS: Bool(false), AuthMode: AuthNone}
+	none := Config{Host: "localhost", IsCluster: Bool(false), ShardedPubSub: Bool(false), TLS: Bool(false), AuthMode: AuthNone}
 	if err := none.Validate(); err != nil {
 		t.Fatalf("AuthNone without TLS: %v", err)
 	}
-	pw := Config{Host: "localhost", IsCluster: Bool(false), TLS: Bool(false), AuthMode: AuthPassword, Password: "secret"}
+	pw := Config{Host: "localhost", IsCluster: Bool(false), ShardedPubSub: Bool(false), TLS: Bool(false), AuthMode: AuthPassword, Password: "secret"}
 	if err := pw.Validate(); err != nil {
 		t.Fatalf("AuthPassword: %v", err)
 	}

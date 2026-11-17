@@ -71,3 +71,13 @@ func SetCmd(client valkeygo.Client, key string, value []byte, ttl time.Duration)
 	}
 	return cmd.Build()
 }
+
+// SetNXCmd builds SET key value NX [PX ttl]. A ttl of 0 or less stores without expiry. The reply is
+// nil when the key already exists.
+func SetNXCmd(client valkeygo.Client, key string, value []byte, ttl time.Duration) valkeygo.Completed {
+	cmd := client.B().Set().Key(key).Value(valkeygo.BinaryString(value)).Nx()
+	if ttl > 0 {
+		return cmd.PxMilliseconds(DurationMillis(ttl)).Build()
+	}
+	return cmd.Build()
+}

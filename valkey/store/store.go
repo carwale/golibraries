@@ -18,6 +18,9 @@ var (
 	ErrNotFound = errors.New("valkey: not found")
 	// ErrEmptyKey is returned for an empty or blank key.
 	ErrEmptyKey = common.ErrEmptyKey
+	// ErrInvalidTTL is returned by Expire for a ttl of 0 or less. Use Persist to remove a TTL and
+	// Del to delete a key.
+	ErrInvalidTTL = errors.New("valkey: Expire needs a positive ttl; use Persist to remove a TTL or Del to delete")
 )
 
 // NoExpiry is returned by IStore.TTL for a key that exists without a TTL.
@@ -31,7 +34,13 @@ type ZMember struct {
 
 // IStore is the system-of-record API. Reads of a missing key, field or member return ErrNotFound.
 //
-// A ttl of 0 or less means no expiry. Typed access is provided by GetAs, SetAs, HGetAs and HSetAs.
+// In Set and SetNX a ttl of 0 or less stores without expiry; Expire rejects it with ErrInvalidTTL.
+// Typed access is provided by GetAs, SetAs, HGetAs and HSetAs.
+//
+// Multi-key commands that allow keys in different cluster slots (MGet, Del, Exists) are not atomic:
+// they run one command per slot or key. On a partial failure Del and Exists return the count of the
+// commands that succeeded with the joined errors, so the caller cannot tell which keys were affected;
+// retry them one key at a time, or keep related keys in one slot with a {hash tag} and use a script.
 type IStore interface {
 	// Strings and keys
 	Get(ctx context.Context, key string) ([]byte, error)
@@ -40,11 +49,11 @@ type IStore interface {
 	SetNX(ctx context.Context, key string, value []byte, ttl time.Duration) (bool, error)
 	// MGet returns the keys that exist; missing keys are omitted. Cross-slot keys are allowed.
 	MGet(ctx context.Context, keys []string) (map[string][]byte, error)
-	// Del deletes keys (cross-slot allowed) and returns how many existed.
+	// Del deletes keys (cross-slot allowed, not atomic) and returns how many existed.
 	Del(ctx context.Context, keys ...string) (int64, error)
-	// Exists returns how many of the keys exist (cross-slot allowed).
+	// Exists returns how many of the keys exist (cross-slot allowed, not atomic).
 	Exists(ctx context.Context, keys ...string) (int64, error)
-	// Expire sets a TTL and reports whether the key exists.
+	// Expire sets a TTL and reports whether the key exists. ttl must be positive (ErrInvalidTTL).
 	Expire(ctx context.Context, key string, ttl time.Duration) (bool, error)
 	// TTL returns the remaining TTL, NoExpiry for a key without one, or ErrNotFound.
 	TTL(ctx context.Context, key string) (time.Duration, error)
@@ -79,13 +88,21 @@ type IStore interface {
 	ZRem(ctx context.Context, key string, members ...string) (int64, error)
 	ZScore(ctx context.Context, key, member string) (float64, error)
 	// ZRangeByScore returns members with scores in [min, max], ordered by score. min and max use
-	// Valkey syntax ("-inf", "+inf", "(5" for exclusive). count <= 0 means no limit.
+	// Valkey syntax ("-inf", "+inf", "(5" for exclusive). offset skips that many members; count <= 0
+	// means no limit.
 	ZRangeByScore(ctx context.Context, key, min, max string, offset, count int64) ([]ZMember, error)
 	ZCard(ctx context.Context, key string) (int64, error)
 
-	// Scripts
-	// RunScript runs s with keys and args. The error is also available as result.Error().
-	RunScript(ctx context.Context, s *Script, keys, args []string) (valkeygo.ValkeyResult, error)
+	// Scripts. In cluster mode every key a script touches must be in one slot.
+	// RunScript runs s and returns its reply decoded: int64, string, float64, bool, []any or
+	// map[string]any. A nil reply (Lua false or nil) returns nil, nil.
+	RunScript(ctx context.Context, s *Script, keys, args []string) (any, error)
+	// RunScriptInt64 runs s and returns its integer reply.
+	RunScriptInt64(ctx context.Context, s *Script, keys, args []string) (int64, error)
+	// RunScriptString runs s and returns its string reply; ErrNotFound for a nil reply.
+	RunScriptString(ctx context.Context, s *Script, keys, args []string) (string, error)
+	// RunScriptStrings runs s and returns its array reply as strings.
+	RunScriptStrings(ctx context.Context, s *Script, keys, args []string) ([]string, error)
 
 	// Transcoder returns the encoder used by the typed helpers.
 	Transcoder() transcoder.ITranscoder
@@ -172,14 +189,7 @@ func (s *valkeyStore) SetNX(ctx context.Context, key string, value []byte, ttl t
 	if err := checkKey(key); err != nil {
 		return false, err
 	}
-	nx := s.client.B().Set().Key(key).Value(valkeygo.BinaryString(value)).Nx()
-	var cmd valkeygo.Completed
-	if ttl > 0 {
-		cmd = nx.PxMilliseconds(common.DurationMillis(ttl)).Build()
-	} else {
-		cmd = nx.Build()
-	}
-	err := s.do(ctx, cmd).Error()
+	err := s.do(ctx, common.SetNXCmd(s.client, key, value, ttl)).Error()
 	if valkeygo.IsValkeyNil(err) {
 		return false, nil // key already existed
 	}
@@ -253,8 +263,7 @@ func (s *valkeyStore) Expire(ctx context.Context, key string, ttl time.Duration)
 		return false, err
 	}
 	if ttl <= 0 {
-		n, err := s.Del(ctx, key)
-		return n > 0, err
+		return false, ErrInvalidTTL
 	}
 	return s.do(ctx, s.client.B().Pexpire().Key(key).Milliseconds(common.DurationMillis(ttl)).Build()).AsBool()
 }
@@ -465,9 +474,12 @@ func (s *valkeyStore) ZRangeByScore(ctx context.Context, key, min, max string, o
 	}
 	base := s.client.B().Zrangebyscore().Key(key).Min(min).Max(max).Withscores()
 	var cmd valkeygo.Completed
-	if count > 0 {
+	switch {
+	case count > 0:
 		cmd = base.Limit(offset, count).Build()
-	} else {
+	case offset > 0:
+		cmd = base.Limit(offset, -1).Build() // a negative count means all remaining members
+	default:
 		cmd = base.Build()
 	}
 	scores, err := s.do(ctx, cmd).AsZScores()
@@ -488,12 +500,49 @@ func (s *valkeyStore) ZCard(ctx context.Context, key string) (int64, error) {
 	return s.do(ctx, s.client.B().Zcard().Key(key).Build()).AsInt64()
 }
 
-func (s *valkeyStore) RunScript(ctx context.Context, script *Script, keys, args []string) (valkeygo.ValkeyResult, error) {
+var errNoScript = errors.New("valkey: RunScript needs a script")
+
+func (s *valkeyStore) runScript(ctx context.Context, script *Script, keys, args []string) (valkeygo.ValkeyResult, error) {
 	if script == nil || script.lua == nil {
-		return valkeygo.ValkeyResult{}, errors.New("valkey: RunScript needs a script")
+		return valkeygo.ValkeyResult{}, errNoScript
 	}
 	ctx, cancel := common.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	r := script.lua.Exec(ctx, s.client, keys, args)
 	return r, r.Error()
+}
+
+func (s *valkeyStore) RunScript(ctx context.Context, script *Script, keys, args []string) (any, error) {
+	r, err := s.runScript(ctx, script, keys, args)
+	if valkeygo.IsValkeyNil(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return r.ToAny()
+}
+
+func (s *valkeyStore) RunScriptInt64(ctx context.Context, script *Script, keys, args []string) (int64, error) {
+	r, err := s.runScript(ctx, script, keys, args)
+	if err != nil {
+		return 0, notFound(err)
+	}
+	return r.AsInt64()
+}
+
+func (s *valkeyStore) RunScriptString(ctx context.Context, script *Script, keys, args []string) (string, error) {
+	r, err := s.runScript(ctx, script, keys, args)
+	if err != nil {
+		return "", notFound(err)
+	}
+	return r.ToString()
+}
+
+func (s *valkeyStore) RunScriptStrings(ctx context.Context, script *Script, keys, args []string) ([]string, error) {
+	r, err := s.runScript(ctx, script, keys, args)
+	if err != nil {
+		return nil, notFound(err)
+	}
+	return r.AsStrSlice()
 }

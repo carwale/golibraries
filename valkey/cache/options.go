@@ -45,3 +45,14 @@ func WithRefreshDuration(d time.Duration) Option {
 		}
 	}
 }
+
+// WithLoadTimeout bounds a shared GetOrLoad / MultiGetOrLoad load. Concurrent callers of the same
+// key share one load, which runs detached from any single caller's cancellation, until the later of
+// this timeout and the starting caller's deadline. Default 5s.
+func WithLoadTimeout(d time.Duration) Option {
+	return func(c *valkeyCache) {
+		if d > 0 {
+			c.loadGroups.timeout = d
+		}
+	}
+}
