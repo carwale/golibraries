@@ -36,23 +36,25 @@ type Callback[T any] struct {
 }
 
 // GetAs reads key and decodes it into T. ok is false on a miss, an error, the critical sentinel or
-// a value that does not decode.
+// a value that does not decode (logged).
 func GetAs[T any](ctx context.Context, c ICache, key string) (value T, ok bool) {
 	raw, found := c.Get(ctx, key)
 	if !found {
 		return value, false
 	}
 	if err := c.Transcoder().Unmarshal(raw, &value); err != nil {
+		logTypedErr(c, "decode", key, err)
 		var zero T
 		return zero, false
 	}
 	return value, true
 }
 
-// SetAs encodes value and stores it. It returns false when encoding or the write fails.
+// SetAs encodes value and stores it. It returns false when encoding (logged) or the write fails.
 func SetAs[T any](ctx context.Context, c ICache, key string, value T, ttl time.Duration) bool {
 	raw, err := c.Transcoder().Marshal(value)
 	if err != nil {
+		logTypedErr(c, "encode", key, err)
 		return false
 	}
 	return c.Set(ctx, key, raw, ttl)
@@ -110,10 +112,12 @@ func getOrLoad[T any](ctx context.Context, c ICache, key string, ttl time.Durati
 		return loadShared(ctx, c, key, ttl, criticalLoad, storeAlways)
 	case r.IsKeyExist:
 		var v T
-		if err := c.Transcoder().Unmarshal(r.Value, &v); err == nil {
+		err := c.Transcoder().Unmarshal(r.Value, &v)
+		if err == nil {
 			return v, nil
 		}
 		// An undecodable value is replaced with a fresh one.
+		logTypedErr(c, "decode", key, err)
 		return loadShared(ctx, c, key, ttl, load, storeAlways)
 	}
 	return loadShared(ctx, c, key, ttl, load, storeIfAbsent)
@@ -224,6 +228,8 @@ func loadAndStore[T any](ctx context.Context, c ICache, key string, ttl time.Dur
 	case storeIfAbsent:
 		if raw, err := c.Transcoder().Marshal(v); err == nil {
 			c.SetNX(ctx, key, raw, ttl)
+		} else {
+			logTypedErr(c, "encode", key, err)
 		}
 	case storeAlways:
 		SetAs(ctx, c, key, v, ttl)
@@ -232,15 +238,17 @@ func loadAndStore[T any](ctx context.Context, c ICache, key string, ttl time.Dur
 }
 
 // MultiGetAs reads many keys and decodes the hits. Misses, sentinels, errors and undecodable values
-// are omitted.
+// (logged) are omitted.
 func MultiGetAs[T any](ctx context.Context, c ICache, keys []string) map[string]T {
 	raw := c.MultiGet(ctx, keys)
 	out := make(map[string]T, len(raw))
 	for k, b := range raw {
 		var v T
-		if err := c.Transcoder().Unmarshal(b, &v); err == nil {
-			out[k] = v
+		if err := c.Transcoder().Unmarshal(b, &v); err != nil {
+			logTypedErr(c, "decode", k, err)
+			continue
 		}
+		out[k] = v
 	}
 	return out
 }
@@ -303,10 +311,12 @@ func MultiGetOrLoad[T any](ctx context.Context, c ICache, callbacks map[string]C
 			mode = storeAlways
 		case r.IsKeyExist:
 			var v T
-			if err := c.Transcoder().Unmarshal(r.Value, &v); err == nil {
+			err := c.Transcoder().Unmarshal(r.Value, &v)
+			if err == nil {
 				out[key] = v
 				continue
 			}
+			logTypedErr(c, "decode", key, err)
 			mode = storeAlways // undecodable: replace it
 		}
 		load := cb.Load

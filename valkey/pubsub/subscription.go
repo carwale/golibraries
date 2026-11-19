@@ -3,6 +3,7 @@ package pubsub
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
 	"strings"
 	"sync"
@@ -32,14 +33,15 @@ func (l *receiveLoop) build(b valkeygo.Builder) valkeygo.Completed {
 	}
 }
 
-func (l *receiveLoop) buildUnsubscribe(b valkeygo.Builder) valkeygo.Completed {
-	switch l.kind {
+// buildUnsubscribe builds the unsubscribe command matching a receive loop kind.
+func buildUnsubscribe(b valkeygo.Builder, kind string, names []string) valkeygo.Completed {
+	switch kind {
 	case "ssubscribe":
-		return b.Sunsubscribe().Channel(l.names...).Build()
+		return b.Sunsubscribe().Channel(names...).Build()
 	case "psubscribe":
-		return b.Punsubscribe().Pattern(l.names...).Build()
+		return b.Punsubscribe().Pattern(names...).Build()
 	default:
-		return b.Unsubscribe().Channel(l.names...).Build()
+		return b.Unsubscribe().Channel(names...).Build()
 	}
 }
 
@@ -69,6 +71,12 @@ type subscription struct {
 	confirmed map[string]bool
 	pending   int
 	ready     chan struct{}
+	lastErr   error // latest receive error; Subscribe reports it when confirmation times out
+
+	// failed is closed when the server rejects the subscription before it was ever confirmed (for
+	// example NOPERM): retrying cannot help, so Subscribe returns the error at once.
+	failed     chan struct{}
+	failedOnce sync.Once
 }
 
 var _ ISubscription = (*subscription)(nil)
@@ -88,6 +96,7 @@ func newSubscription(owner *subscriber, names []string, handler Handler, o subsc
 		confirmed: make(map[string]bool, len(names)),
 		pending:   len(names),
 		ready:     make(chan struct{}),
+		failed:    make(chan struct{}),
 	}
 }
 
@@ -101,14 +110,10 @@ func (s *subscription) Done() <-chan struct{} { return s.done }
 func (s *subscription) Close() {
 	s.once.Do(func() {
 		// Cancelling Receive only detaches the local handler; the server keeps the subscription
-		// until it is told otherwise, so unsubscribe explicitly first.
+		// until it is told otherwise, so unsubscribe explicitly first: only the names no other
+		// subscription on this connection still uses.
 		s.closing.Store(true)
-		client := s.owner.client
-		for _, l := range s.receivers {
-			ctx, cancel := context.WithTimeout(context.Background(), unsubscribeTimeout)
-			_ = client.Do(ctx, l.buildUnsubscribe(client.B())).Error()
-			cancel()
-		}
+		s.owner.release(s.receivers)
 		s.cancel()
 		s.loops.Wait()
 		close(s.stop)
@@ -187,18 +192,27 @@ func (s *subscription) receive(l *receiveLoop) {
 				s.confirm(l, ps.Channel)
 			}
 		})
-		err := client.Receive(hookCtx, l.build(client.B()), func(m valkeygo.PubSubMessage) {
-			s.handler(Message{Channel: m.Channel, Pattern: m.Pattern, Payload: []byte(m.Message)})
-		})
+		err := client.Receive(hookCtx, l.build(client.B()), s.deliver)
 		if s.closing.Load() || s.ctx.Err() != nil || errors.Is(err, valkeygo.ErrClosing) {
 			return
 		}
 		if err == nil {
 			err = errUnsubscribed
 		}
+		s.mu.Lock()
+		s.lastErr = err
+		s.mu.Unlock()
+
+		if !s.isReady() && rejected(err) {
+			// The server refused the subscription itself (ACL, bad name): fail Subscribe now
+			// instead of retrying until it times out.
+			s.failedOnce.Do(func() { close(s.failed) })
+			return
+		}
 
 		l.mu.Lock()
-		if l.confirmed {
+		wasUp := l.confirmed
+		if wasUp {
 			attempt = 0 // the last attempt worked for a while; restart the backoff
 		}
 		l.confirmed = false
@@ -209,7 +223,9 @@ func (s *subscription) receive(l *receiveLoop) {
 		l.mu.Unlock()
 
 		s.owner.logger.LogError("valkey: subscription to "+strings.Join(l.names, ", ")+" dropped, resubscribing", err)
-		if fn := s.opts.onDisconnected; fn != nil {
+		// Report each outage once, when an established subscription drops; failed attempts while
+		// starting or reconnecting are not new disconnections.
+		if fn := s.opts.onDisconnected; fn != nil && wasUp {
 			dropErr := err
 			s.emit(func() { fn(dropErr) })
 		}
@@ -221,6 +237,50 @@ func (s *subscription) receive(l *receiveLoop) {
 		}
 		attempt++
 	}
+}
+
+// deliver runs the handler for one message. A panic is recovered and logged, so a bad message
+// cannot kill the process; that message is dropped.
+func (s *subscription) deliver(m valkeygo.PubSubMessage) {
+	defer func() {
+		if p := recover(); p != nil {
+			s.owner.logger.LogError("valkey: pub/sub handler panicked on channel "+m.Channel, fmt.Errorf("panic: %v", p))
+		}
+	}()
+	s.handler(Message{Channel: m.Channel, Pattern: m.Pattern, Payload: []byte(m.Message)})
+}
+
+func (s *subscription) isReady() bool {
+	select {
+	case <-s.ready:
+		return true
+	default:
+		return false
+	}
+}
+
+// rejected reports whether err is the server refusing this client the command, which a retry
+// cannot fix: NOPERM (ACL) and NOAUTH / WRONGPASS (credentials). Everything else is retried until
+// the confirmation timeout: network errors, transient replies (LOADING, TRYAGAIN, CLUSTERDOWN,
+// MOVED) and generic ERR replies, some of which are temporary ("max number of clients reached").
+func rejected(err error) bool {
+	verr, ok := valkeygo.IsValkeyErr(err)
+	if !ok {
+		return false
+	}
+	msg := verr.Error()
+	for _, prefix := range []string{"NOPERM", "NOAUTH", "WRONGPASS"} {
+		if strings.HasPrefix(msg, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *subscription) lastError() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.lastErr
 }
 
 // confirm runs on the connection goroutine for every subscribe confirmation. It must not block.

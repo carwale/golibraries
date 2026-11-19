@@ -32,7 +32,10 @@ type ZMember struct {
 	Score  float64
 }
 
-// IStore is the system-of-record API. Reads of a missing key, field or member return ErrNotFound.
+// IStore is the system-of-record API. Single-value reads (Get, HGet, ZScore, TTL) return
+// ErrNotFound for a missing key, field or member. Batch reads (MGet, HMGet) omit missing items and
+// return no error. Every key must be non-blank: a blank key, also inside MGet, Del or Exists, is
+// rejected with ErrEmptyKey.
 //
 // In Set and SetNX a ttl of 0 or less stores without expiry; Expire rejects it with ErrInvalidTTL.
 // Typed access is provided by GetAs, SetAs, HGetAs and HSetAs.
@@ -162,6 +165,17 @@ func checkKey(key string) error {
 	return nil
 }
 
+// uniqueKeys rejects any blank key with ErrEmptyKey, so a bug that produces an empty key is not
+// mistaken for "key does not exist", and drops duplicates.
+func uniqueKeys(keys []string) ([]string, error) {
+	for _, k := range keys {
+		if err := checkKey(k); err != nil {
+			return nil, err
+		}
+	}
+	return common.UniqueKeys(keys), nil
+}
+
 // notFound maps a Valkey nil reply to ErrNotFound.
 func notFound(err error) error {
 	if valkeygo.IsValkeyNil(err) {
@@ -197,7 +211,10 @@ func (s *valkeyStore) SetNX(ctx context.Context, key string, value []byte, ttl t
 }
 
 func (s *valkeyStore) MGet(ctx context.Context, keys []string) (map[string][]byte, error) {
-	unique := common.UniqueKeys(keys)
+	unique, err := uniqueKeys(keys)
+	if err != nil {
+		return nil, err
+	}
 	out := make(map[string][]byte, len(unique))
 	if len(unique) == 0 {
 		return out, nil
@@ -227,7 +244,10 @@ func (s *valkeyStore) MGet(ctx context.Context, keys []string) (map[string][]byt
 // perKey pipelines one single-key command per key and sums the integer replies, so keys in
 // different cluster slots are fine.
 func (s *valkeyStore) perKey(ctx context.Context, keys []string, build func(string) valkeygo.Completed) (int64, error) {
-	unique := common.UniqueKeys(keys)
+	unique, err := uniqueKeys(keys)
+	if err != nil {
+		return 0, err
+	}
 	if len(unique) == 0 {
 		return 0, nil
 	}

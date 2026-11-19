@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/carwale/golibraries/valkey/cache"
+	"github.com/carwale/golibraries/valkey/internal/common"
 )
 
 // AuthMode selects how the client authenticates to Valkey.
@@ -19,12 +22,7 @@ const (
 	AuthNone AuthMode = "none"
 )
 
-const (
-	defaultPort                 = 6379
-	defaultRequestTimeout       = 250 * time.Millisecond
-	defaultRefreshCacheDuration = 10 * time.Second
-	defaultLoadTimeout          = 5 * time.Second
-)
+const defaultPort = 6379
 
 // Config holds the connection settings. It mirrors ValkeyCacheConfig in AEPLCore.Valkey.
 type Config struct {
@@ -37,7 +35,8 @@ type Config struct {
 	IsCluster *bool
 	// TLS enables TLS. Defaults to true; IAM auth requires it.
 	TLS *bool
-	// InsecureSkipVerify disables TLS certificate verification. Only for local testing.
+	// InsecureSkipVerify disables TLS certificate verification. Only for local testing; rejected with
+	// AuthIAM.
 	InsecureSkipVerify bool
 
 	// AuthMode defaults to AuthIAM.
@@ -58,7 +57,8 @@ type Config struct {
 
 	// ClientName is sent with CLIENT SETNAME on every connection.
 	ClientName string
-	// RequestTimeout bounds each command when the caller's context has no deadline. Default 250ms.
+	// RequestTimeout bounds each command. The cache applies it even under a longer caller deadline;
+	// the store and publisher apply it only when the caller's context has no deadline. Default 250ms.
 	RequestTimeout time.Duration
 	// RefreshCacheDuration is the TTL used by soft expire and the critical-read sentinel. Default 10s.
 	RefreshCacheDuration time.Duration
@@ -103,13 +103,13 @@ func (c *Config) Validate() error {
 		c.AuthMode = AuthIAM
 	}
 	if c.RequestTimeout <= 0 {
-		c.RequestTimeout = defaultRequestTimeout
+		c.RequestTimeout = common.DefaultRequestTimeout
 	}
 	if c.RefreshCacheDuration <= 0 {
-		c.RefreshCacheDuration = defaultRefreshCacheDuration
+		c.RefreshCacheDuration = cache.DefaultRefreshDuration
 	}
 	if c.LoadTimeout <= 0 {
-		c.LoadTimeout = defaultLoadTimeout
+		c.LoadTimeout = cache.DefaultLoadTimeout
 	}
 	c.ClusterName = strings.ToLower(strings.TrimSpace(c.ClusterName))
 
@@ -117,6 +117,9 @@ func (c *Config) Validate() error {
 	case AuthIAM:
 		if !*c.TLS {
 			return errors.New("valkey: IAM auth requires TLS; set TLS = true")
+		}
+		if c.InsecureSkipVerify {
+			return errors.New("valkey: InsecureSkipVerify cannot be used with IAM auth: the IAM token would be sent to an unverified server")
 		}
 		if strings.TrimSpace(c.Username) == "" {
 			return errors.New("valkey: Username is required for IAM auth")

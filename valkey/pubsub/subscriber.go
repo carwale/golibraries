@@ -23,6 +23,8 @@ const (
 var (
 	// ErrSubscriberClosed is returned when subscribing on a closed subscriber.
 	ErrSubscriberClosed = errors.New("valkey: subscriber is closed")
+	// ErrEmptyChannel is returned for an empty or blank channel or pattern.
+	ErrEmptyChannel = errors.New("valkey: channel is empty")
 	// errUnsubscribed is reported when the server ends a subscription without an error.
 	errUnsubscribed = errors.New("valkey: subscription ended by the server")
 )
@@ -49,7 +51,12 @@ type ISubscriber interface {
 	// subscribe round trip, so keep the channel count per subscription small (one per pod, not one
 	// per user).
 	//
-	// handler runs on the connection goroutine, in order, and must not block. Lifecycle callbacks
+	// Several subscriptions may share a channel: each gets every message, and closing one leaves the
+	// others subscribed. Blank channels are rejected with ErrEmptyChannel; duplicates are dropped.
+	//
+	// handler runs on the subscription's receive goroutine, in order, and must not block: valkey-go
+	// buffers only a few messages per receiver, after which the shared connection stalls. A panic in
+	// handler is recovered and logged, and that message is dropped. Lifecycle callbacks
 	// (OnSubscribed, OnDisconnected, OnResubscribed) run one at a time on a separate goroutine, so
 	// they may be slow without delaying messages.
 	Subscribe(ctx context.Context, channels []string, handler Handler, opts ...SubscribeOption) (ISubscription, error)
@@ -69,7 +76,16 @@ type subscriber struct {
 	mu     sync.Mutex
 	subs   map[*subscription]struct{}
 	closed bool
+
+	// refs counts the open subscriptions per (kind, name). The connection is shared and an
+	// UNSUBSCRIBE ends every receiver of that name on it, so it is sent only when the count reaches
+	// 0. refMu also orders a subscription start after an in-flight unsubscribe of the same name.
+	// Lock order: refMu before mu.
+	refMu sync.Mutex
+	refs  map[refKey]int
 }
+
+type refKey struct{ kind, name string }
 
 var _ ISubscriber = (*subscriber)(nil)
 
@@ -78,7 +94,7 @@ var _ ISubscriber = (*subscriber)(nil)
 // dropped subscriptions internally and OnDisconnected / OnResubscribed never fire. Most services use
 // valkey.Client.NewSubscriber, which does this.
 func NewSubscriber(client valkeygo.Client, opts ...SubscriberOption) ISubscriber {
-	s := &subscriber{client: client, subs: map[*subscription]struct{}{}}
+	s := &subscriber{client: client, subs: map[*subscription]struct{}{}, refs: map[refKey]int{}}
 	for _, opt := range opts {
 		opt(s)
 	}
@@ -90,30 +106,54 @@ func NewSubscriber(client valkeygo.Client, opts ...SubscriberOption) ISubscriber
 
 func (s *subscriber) Subscribe(ctx context.Context, channels []string, handler Handler, opts ...SubscribeOption) (ISubscription, error) {
 	o := applySubscribeOptions(opts)
+	names, err := uniqueNames(channels)
+	if err != nil {
+		return nil, err
+	}
+	return s.start(ctx, names, s.channelLoops(names, o), handler, o)
+}
+
+// channelLoops picks SSUBSCRIBE or SUBSCRIBE from the subscriber default and the WithSharded
+// override.
+func (s *subscriber) channelLoops(names []string, o subscribeOptions) []*receiveLoop {
 	sharded := s.sharded
 	if o.sharded != nil {
 		sharded = *o.sharded
 	}
-	names := common.UniqueKeys(channels)
-	var loops []*receiveLoop
-	if sharded {
-		// SSUBSCRIBE channels must share a slot, so each channel gets its own loop.
-		for _, ch := range names {
-			loops = append(loops, &receiveLoop{kind: "ssubscribe", names: []string{ch}})
-		}
-	} else if len(names) > 0 {
-		loops = []*receiveLoop{{kind: "subscribe", names: names}}
+	if len(names) == 0 {
+		return nil
 	}
-	return s.start(ctx, names, loops, handler, o)
+	if !sharded {
+		return []*receiveLoop{{kind: "subscribe", names: names}}
+	}
+	// SSUBSCRIBE channels must share a slot, so each channel gets its own loop.
+	loops := make([]*receiveLoop, 0, len(names))
+	for _, ch := range names {
+		loops = append(loops, &receiveLoop{kind: "ssubscribe", names: []string{ch}})
+	}
+	return loops
 }
 
 func (s *subscriber) PSubscribe(ctx context.Context, patterns []string, handler Handler, opts ...SubscribeOption) (ISubscription, error) {
-	names := common.UniqueKeys(patterns)
+	names, err := uniqueNames(patterns)
+	if err != nil {
+		return nil, err
+	}
 	var loops []*receiveLoop
 	if len(names) > 0 {
 		loops = []*receiveLoop{{kind: "psubscribe", names: names}}
 	}
 	return s.start(ctx, names, loops, handler, applySubscribeOptions(opts))
+}
+
+// uniqueNames rejects blank names and drops duplicates, keeping order.
+func uniqueNames(names []string) ([]string, error) {
+	for _, n := range names {
+		if common.Blank(n) {
+			return nil, ErrEmptyChannel
+		}
+	}
+	return common.UniqueKeys(names), nil
 }
 
 func applySubscribeOptions(opts []SubscribeOption) subscribeOptions {
@@ -135,16 +175,24 @@ func (s *subscriber) start(ctx context.Context, names []string, loops []*receive
 		ctx = context.Background()
 	}
 
+	s.refMu.Lock()
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
+		s.refMu.Unlock()
 		return nil, ErrSubscriberClosed
+	}
+	for _, l := range loops {
+		for _, n := range l.names {
+			s.refs[refKey{l.kind, n}]++
+		}
 	}
 	sub := newSubscription(s, names, handler, o)
 	// Start it before releasing the lock: a concurrent Close then sees it fully started.
 	sub.run(loops)
 	s.subs[sub] = struct{}{}
 	s.mu.Unlock()
+	s.refMu.Unlock()
 
 	wait, cancel := common.WithTimeout(ctx, defaultConfirmTimeout)
 	defer cancel()
@@ -154,9 +202,41 @@ func (s *subscriber) start(ctx context.Context, names []string, loops []*receive
 	case <-sub.done:
 		// The subscriber was closed while this subscription was starting.
 		return nil, ErrSubscriberClosed
+	case <-sub.failed:
+		sub.Close()
+		return nil, fmt.Errorf("valkey: subscribing to %s: %w", strings.Join(names, ", "), sub.lastError())
 	case <-wait.Done():
 		sub.Close()
-		return nil, fmt.Errorf("valkey: waiting for subscription to %s: %w", strings.Join(names, ", "), wait.Err())
+		what := strings.Join(names, ", ")
+		if last := sub.lastError(); last != nil {
+			return nil, fmt.Errorf("valkey: waiting for subscription to %s: %w (last error: %w)", what, wait.Err(), last)
+		}
+		return nil, fmt.Errorf("valkey: waiting for subscription to %s: %w", what, wait.Err())
+	}
+}
+
+// release drops one reference to each name of loops and unsubscribes the names no other
+// subscription still uses. It holds refMu while unsubscribing, so a subscription to the same name
+// that starts concurrently sends its SUBSCRIBE only after the UNSUBSCRIBE has completed.
+func (s *subscriber) release(loops []*receiveLoop) {
+	s.refMu.Lock()
+	defer s.refMu.Unlock()
+	for _, l := range loops {
+		var unused []string
+		for _, n := range l.names {
+			k := refKey{l.kind, n}
+			s.refs[k]--
+			if s.refs[k] <= 0 {
+				delete(s.refs, k)
+				unused = append(unused, n)
+			}
+		}
+		if len(unused) == 0 {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), unsubscribeTimeout)
+		_ = s.client.Do(ctx, buildUnsubscribe(s.client.B(), l.kind, unused)).Error()
+		cancel()
 	}
 }
 

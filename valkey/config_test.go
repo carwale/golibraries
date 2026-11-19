@@ -56,6 +56,7 @@ func TestConfigValidateErrors(t *testing.T) {
 		{"iam without username", func(c *Config) { c.Username = "" }, "Username"},
 		{"iam without cluster name", func(c *Config) { c.ClusterName = "" }, "ClusterName"},
 		{"iam without region", func(c *Config) { c.Region = "" }, "Region"},
+		{"iam with InsecureSkipVerify", func(c *Config) { c.InsecureSkipVerify = true }, "InsecureSkipVerify"},
 		{"password without password", func(c *Config) { c.AuthMode = AuthPassword }, "Password"},
 		{"unknown auth mode", func(c *Config) { c.AuthMode = "kerberos" }, "AuthMode"},
 	}

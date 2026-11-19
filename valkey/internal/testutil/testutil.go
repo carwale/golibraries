@@ -2,7 +2,9 @@
 package testutil
 
 import (
+	"bytes"
 	"io"
+	"sync"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -13,6 +15,31 @@ import (
 // DiscardLogger returns a logger that writes nothing.
 func DiscardLogger() gologger.ILogger {
 	return gologger.NewLoggerFactory().CreateZerologLogger(gologger.WithOutput(io.Discard))
+}
+
+// LogBuffer is a log sink that is safe for concurrent writes, for asserting what was logged.
+type LogBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *LogBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+// String returns everything logged so far.
+func (l *LogBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+// BufferLogger returns a logger that writes into the returned buffer.
+func BufferLogger() (gologger.ILogger, *LogBuffer) {
+	buf := &LogBuffer{}
+	return gologger.NewLoggerFactory().CreateZerologLogger(gologger.WithOutput(buf)), buf
 }
 
 // Option returns valkey-go options for a plain connection to addr.

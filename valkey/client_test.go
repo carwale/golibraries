@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/carwale/golibraries/valkey/cache"
 	"github.com/carwale/golibraries/valkey/pubsub"
 	"github.com/carwale/golibraries/valkey/store"
@@ -25,7 +26,15 @@ func TestNewClientFailsWhenUnreachable(t *testing.T) {
 
 // TestClientWiring checks that the Client passes its config to the cache, store and pub/sub views.
 func TestClientWiring(t *testing.T) {
-	c, mr := newTestClient(t)
+	mr := miniredis.RunT(t)
+	cfg := localConfig(t, mr.Addr())
+	// Not cache.DefaultRefreshDuration, so the TTL check below fails if NewClient drops the setting.
+	cfg.RefreshCacheDuration = 7 * time.Second
+	c, err := NewClient(cfg, WithLogger(discardLogger()))
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	t.Cleanup(c.Close)
 	ctx := context.Background()
 
 	if got := c.Config(); got.RequestTimeout != 250*time.Millisecond || got.Port == 0 {
@@ -37,8 +46,8 @@ func TestClientWiring(t *testing.T) {
 	if !cache.SetAs(ctx, c.Cache(), "k", item{N: 1}, time.Hour) || !c.Cache().Expire(ctx, "k") {
 		t.Fatal("cache set/expire failed")
 	}
-	if ttl := mr.TTL("k"); ttl != 10*time.Second {
-		t.Fatalf("soft expire TTL = %v, want the 10s refresh duration", ttl)
+	if ttl := mr.TTL("k"); ttl != 7*time.Second {
+		t.Fatalf("soft expire TTL = %v, want the configured 7s refresh duration", ttl)
 	}
 
 	// Store shares the connection and returns errors.

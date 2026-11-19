@@ -68,7 +68,7 @@ defer client.Close()
 | `TLS` | `true` | IAM auth requires TLS. |
 | `AuthMode` | `AuthIAM` | `AuthPassword` (with `Username`/`Password`) or `AuthNone` for local Valkey. |
 | `Username`, `ClusterName`, `Region` | — | Required for IAM. `Serverless: true` for ElastiCache Serverless. |
-| `RequestTimeout` | `250ms` | Applied when the caller's context has no deadline. |
+| `RequestTimeout` | `250ms` | Cache: caps every command, even under a longer caller deadline. Store and publish: applied when the caller's context has no deadline. |
 | `RefreshCacheDuration` | `10s` | TTL for soft expire and the critical-read sentinel. |
 | `LoadTimeout` | `5s` | Bounds a `GetOrLoad` load shared by concurrent callers (see below). |
 | `ShardedPubSub` | — | Required, no default. `SPUBLISH`/`SSUBSCRIBE` instead of `PUBLISH`/`SUBSCRIBE` (Valkey 7+). The two are separate namespaces: every publisher and subscriber of a channel must agree, and C# services (StackExchange.Redis) publish classic by default. |
@@ -134,8 +134,14 @@ Behaviour notes:
 - Errors are logged and treated as misses. When Valkey is unreachable, `GetOrLoad` calls the loader and returns its
   value **without** writing it back. A loader error is returned and nothing is cached; a loader panic is returned as
   an error.
-- After a miss, the loaded value is stored with `SET NX`: a write (or `ExpireWithCriticalRead`) that lands while a
-  slow replica read is in flight wins over the stale result. The critical path overwrites the sentinel.
+- After a miss, the loaded value is stored with `SET NX`: a write that leaves the key present (`Set`, `Expire`,
+  `ExpireWithCriticalRead`) and lands while a slow replica read is in flight wins over the stale result. The critical
+  path overwrites the sentinel. A hard delete (`Delete`, `ExpireWithoutDelay`) leaves the key absent, so `SET NX`
+  then stores the stale loaded value for its full TTL: invalidate after a write with `Expire` or
+  `ExpireWithCriticalRead`, not a hard delete.
+- Every cache command is bounded by `RequestTimeout`, even when the caller's deadline is longer, so a hung Valkey
+  costs a request at most that long before it degrades to a miss.
+- Values that fail to decode (or encode, in `SetAs`) are logged and treated as a miss (or `false`).
 - Concurrent `GetOrLoad` calls for the same key and type in one process share a single load, also while Valkey is
   down. The load is detached from any one caller's cancellation and bounded by `LoadTimeout` or the first caller's
   deadline, whichever is later; each caller stops waiting when its own context ends. Callers sharing a load get the
@@ -150,8 +156,9 @@ Behaviour notes:
 
 ## Store (`valkey/store`)
 
-Valkey as the source of truth. No sentinel handling, nothing swallowed; reads of a missing key, field or member return
-`store.ErrNotFound`. In `Set`/`SetNX` a ttl of 0 means no expiry; `Expire` rejects it with `store.ErrInvalidTTL`
+Valkey as the source of truth. No sentinel handling, nothing swallowed. Single-value reads (`Get`, `HGet`, `ZScore`,
+`TTL`) of a missing key, field or member return `store.ErrNotFound`; batch reads (`MGet`, `HMGet`) omit missing items
+and return no error. A blank key returns `store.ErrEmptyKey`, also inside `MGet`, `Del` and `Exists`. In `Set`/`SetNX` a ttl of 0 means no expiry; `Expire` rejects it with `store.ErrInvalidTTL`
 (use `Persist` or `Del` to say what you mean).
 
 ```go
@@ -219,18 +226,23 @@ Things to know:
 
 - Pub/sub is at-most-once. While the subscription connection is down, messages are lost; `OnDisconnected` and
   `OnResubscribed` tell you when to catch up from the source of truth.
-- The handler runs on the connection's read goroutine, in publish order. It must not block. Lifecycle callbacks run
+- The handler runs on the subscription's receive goroutine, in publish order. It must not block: valkey-go buffers
+  only a few messages per receiver before the shared connection stalls. A handler panic is recovered and logged, and
+  that message is dropped. Lifecycle callbacks run
   one at a time on a separate goroutine, from an unbounded queue, so a slow `OnResubscribed` (a paced resync) never
   stalls message delivery or the connection.
 - Don't call `Close` from a handler or callback (it would wait for itself); use `go s.Close()`.
 - In sharded mode each channel gets its own receive loop and `SSUBSCRIBE` round trip. Keep the channel count per
   subscription small (one per pod, not one per user).
 - `Subscribe` readiness is all or nothing: if any channel is not confirmed in time, the subscription is closed and an
-  error returned. Subscribe channels that can fail independently in separate calls.
+  error returned, wrapping the last subscribe error (for example `NOPERM`) when there was one. Subscribe channels
+  that can fail independently in separate calls.
+- Blank channels or patterns are rejected with `pubsub.ErrEmptyChannel`, by `Subscribe`, `PSubscribe` and `Publish`.
 - Valkey has no sharded pattern subscription. `PSubscribe` is always classic and does **not** see `SPUBLISH`
   messages; in a cluster, publish channels you want to observe by pattern with `pubsub.WithClassicPublish()`.
-- `ISubscription.Close` sends `UNSUBSCRIBE`/`SUNSUBSCRIBE`/`PUNSUBSCRIBE`, waits for the loops to stop and for a
-  running callback to return; callbacks still queued are dropped.
+- Several subscriptions on one subscriber may share a channel; each gets every message. `ISubscription.Close` sends
+  `UNSUBSCRIBE`/`SUNSUBSCRIBE`/`PUNSUBSCRIBE` only for the names no other subscription still uses, waits for the loops
+  to stop and for a running callback to return; callbacks still queued are dropped.
   `ISubscriber.Close` closes every subscription and its connections; `Client.Close` does not close subscribers.
 
 ## Using the packages without `valkey.Client`

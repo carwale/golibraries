@@ -23,8 +23,9 @@ func OnSubscribed(fn func(channel string)) SubscribeOption {
 	return func(o *subscribeOptions) { o.onSubscribed = fn }
 }
 
-// OnDisconnected is called each time the subscription connection drops. Messages published until
-// the subscription is confirmed again are lost: pub/sub cannot replay them.
+// OnDisconnected is called once each time an established subscription drops (not for attempts that
+// fail while it is starting or reconnecting). Messages published until the subscription is
+// confirmed again are lost: pub/sub cannot replay them.
 func OnDisconnected(fn func(err error)) SubscribeOption {
 	return func(o *subscribeOptions) { o.onDisconnected = fn }
 }

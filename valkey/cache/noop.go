@@ -38,6 +38,10 @@ var _ ICache = (*NoOp)(nil)
 
 func (n *NoOp) log() { n.logger.LogErrorWithoutError(noOpMessage) }
 
+func (n *NoOp) logErr(op, key string, err error) {
+	n.logger.LogError("valkey: "+op+" failed for key: "+key, err)
+}
+
 // Transcoder returns the configured transcoder.
 func (n *NoOp) Transcoder() transcoder.ITranscoder { return n.transcoder }
 

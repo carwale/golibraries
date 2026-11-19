@@ -275,6 +275,29 @@ func TestStoreTypedAndErrors(t *testing.T) {
 	}
 }
 
+// A blank key inside a batch is an error, not "key did not exist".
+func TestStoreRejectsBlankKeysInBatches(t *testing.T) {
+	s, _ := newTestStore(t)
+	ctx := context.Background()
+	_ = s.Set(ctx, "a", []byte("1"), 0)
+
+	if n, err := s.Del(ctx, ""); !errors.Is(err, ErrEmptyKey) || n != 0 {
+		t.Fatalf("Del(\"\") = %d, %v; want ErrEmptyKey", n, err)
+	}
+	if _, err := s.Exists(ctx, "a", " "); !errors.Is(err, ErrEmptyKey) {
+		t.Fatalf("Exists with a blank key = %v; want ErrEmptyKey", err)
+	}
+	if _, err := s.MGet(ctx, []string{"a", ""}); !errors.Is(err, ErrEmptyKey) {
+		t.Fatalf("MGet with a blank key = %v; want ErrEmptyKey", err)
+	}
+	if n, err := s.Exists(ctx, "a"); err != nil || n != 1 {
+		t.Fatalf("a should be untouched: Exists = %d, %v", n, err)
+	}
+	if n, err := s.Del(ctx); err != nil || n != 0 {
+		t.Fatalf("Del() with no keys = %d, %v; want 0, nil", n, err)
+	}
+}
+
 type dto struct {
 	ID   int    `json:"Id"`
 	Name string `json:"Name"`

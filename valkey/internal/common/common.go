@@ -63,6 +63,18 @@ func WithTimeout(ctx context.Context, d time.Duration) (context.Context, context
 	return context.WithTimeout(ctx, d)
 }
 
+// CapTimeout bounds ctx by d even when ctx has a later deadline of its own; an earlier caller
+// deadline still wins. The cache uses it so a hung Valkey never holds a request longer than d.
+func CapTimeout(ctx context.Context, d time.Duration) (context.Context, context.CancelFunc) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if d <= 0 {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, d)
+}
+
 // SetCmd builds SET key value [PX ttl]. A ttl of 0 or less stores without expiry.
 func SetCmd(client valkeygo.Client, key string, value []byte, ttl time.Duration) valkeygo.Completed {
 	cmd := client.B().Set().Key(key).Value(valkeygo.BinaryString(value))

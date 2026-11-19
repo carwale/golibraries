@@ -2,7 +2,6 @@ package pubsub
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/carwale/golibraries/valkey/internal/common"
@@ -69,7 +68,7 @@ func applyPublishOptions(opts []PublishOption) publishOptions {
 
 func (p *publisher) Publish(ctx context.Context, channel string, payload []byte, opts ...PublishOption) (int64, error) {
 	if common.Blank(channel) {
-		return 0, errors.New("valkey: channel is empty")
+		return 0, ErrEmptyChannel
 	}
 	ctx, cancel := common.WithTimeout(ctx, p.timeout)
 	defer cancel()
@@ -88,7 +87,7 @@ func (p *publisher) PublishMulti(ctx context.Context, msgs []OutboundMessage, op
 	index := make([]int, 0, len(msgs))
 	for i, m := range msgs {
 		if common.Blank(m.Channel) {
-			errs[i] = errors.New("valkey: channel is empty")
+			errs[i] = ErrEmptyChannel
 			continue
 		}
 		cmds = append(cmds, p.cmd(m.Channel, m.Payload, o))

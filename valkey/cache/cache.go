@@ -130,6 +130,19 @@ func (c *valkeyCache) logErr(op, key string, err error) {
 	c.logger.LogError("valkey: "+op+" failed for key: "+key, err)
 }
 
+// errLogger is implemented by the caches in this package (valkeyCache and NoOp), so the typed
+// helpers can log encode and decode errors. Other ICache implementations (mocks) are not logged to.
+type errLogger interface {
+	logErr(op, key string, err error)
+}
+
+// logTypedErr logs an encode or decode error of a typed helper through c's logger.
+func logTypedErr(c ICache, op, key string, err error) {
+	if l, ok := c.(errLogger); ok {
+		l.logErr(op, key, err)
+	}
+}
+
 func (c *valkeyCache) Get(ctx context.Context, key string) ([]byte, bool) {
 	r := c.GetWithStatus(ctx, key)
 	if !r.IsKeyExist || r.IsCriticalRead {
@@ -143,7 +156,7 @@ func (c *valkeyCache) GetWithStatus(ctx context.Context, key string) Result {
 		c.logErr("Get", key, ErrEmptyKey)
 		return Result{Err: ErrEmptyKey}
 	}
-	ctx, cancel := common.WithTimeout(ctx, c.timeout)
+	ctx, cancel := common.CapTimeout(ctx, c.timeout)
 	defer cancel()
 
 	v, err := c.client.Do(ctx, c.client.B().Get().Key(key).Build()).AsBytes()
@@ -169,7 +182,7 @@ func (c *valkeyCache) Set(ctx context.Context, key string, value []byte, ttl tim
 		c.logErr("Set", key, ErrEmptyKey)
 		return false
 	}
-	ctx, cancel := common.WithTimeout(ctx, c.timeout)
+	ctx, cancel := common.CapTimeout(ctx, c.timeout)
 	defer cancel()
 
 	if err := c.client.Do(ctx, common.SetCmd(c.client, key, value, ttl)).Error(); err != nil {
@@ -184,7 +197,7 @@ func (c *valkeyCache) SetNX(ctx context.Context, key string, value []byte, ttl t
 		c.logErr("SetNX", key, ErrEmptyKey)
 		return false
 	}
-	ctx, cancel := common.WithTimeout(ctx, c.timeout)
+	ctx, cancel := common.CapTimeout(ctx, c.timeout)
 	defer cancel()
 
 	err := c.client.Do(ctx, common.SetNXCmd(c.client, key, value, ttl)).Error()
@@ -203,7 +216,7 @@ func (c *valkeyCache) Delete(ctx context.Context, key string) bool {
 		c.logErr("Delete", key, ErrEmptyKey)
 		return false
 	}
-	ctx, cancel := common.WithTimeout(ctx, c.timeout)
+	ctx, cancel := common.CapTimeout(ctx, c.timeout)
 	defer cancel()
 
 	n, err := c.client.Do(ctx, c.client.B().Del().Key(key).Build()).AsInt64()
@@ -219,7 +232,7 @@ func (c *valkeyCache) Exists(ctx context.Context, key string) bool {
 		c.logErr("Exists", key, ErrEmptyKey)
 		return false
 	}
-	ctx, cancel := common.WithTimeout(ctx, c.timeout)
+	ctx, cancel := common.CapTimeout(ctx, c.timeout)
 	defer cancel()
 
 	n, err := c.client.Do(ctx, c.client.B().Exists().Key(key).Build()).AsInt64()
@@ -247,7 +260,7 @@ func (c *valkeyCache) MultiGetWithStatus(ctx context.Context, keys []string) map
 	if len(unique) == 0 {
 		return out
 	}
-	ctx, cancel := common.WithTimeout(ctx, c.timeout)
+	ctx, cancel := common.CapTimeout(ctx, c.timeout)
 	defer cancel()
 
 	// valkeygo.MGet groups keys by slot in cluster mode, so cross-slot keys are safe.
@@ -296,7 +309,7 @@ func (c *valkeyCache) ExpireWithDelay(ctx context.Context, key string, ttl time.
 	if ttl <= 0 {
 		return c.ExpireWithoutDelay(ctx, key)
 	}
-	ctx, cancel := common.WithTimeout(ctx, c.timeout)
+	ctx, cancel := common.CapTimeout(ctx, c.timeout)
 	defer cancel()
 
 	// A missing key counts as success, as in the C# library.
@@ -313,7 +326,7 @@ func (c *valkeyCache) ExpireWithoutDelay(ctx context.Context, key string) bool {
 		c.logErr("ExpireWithoutDelay", key, ErrEmptyKey)
 		return false
 	}
-	ctx, cancel := common.WithTimeout(ctx, c.timeout)
+	ctx, cancel := common.CapTimeout(ctx, c.timeout)
 	defer cancel()
 
 	if err := c.client.Do(ctx, c.client.B().Del().Key(key).Build()).Error(); err != nil {
@@ -342,7 +355,7 @@ func (c *valkeyCache) multi(ctx context.Context, op string, keys []string, build
 	if len(unique) == 0 {
 		return true
 	}
-	ctx, cancel := common.WithTimeout(ctx, c.timeout)
+	ctx, cancel := common.CapTimeout(ctx, c.timeout)
 	defer cancel()
 
 	cmds := make(valkeygo.Commands, 0, len(unique))

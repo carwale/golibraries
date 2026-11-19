@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -180,6 +181,29 @@ func TestTypedCacheHelpers(t *testing.T) {
 	got := MultiGetAs[dto](ctx, cache, []string{"dto", "cs", "bad", "missing"})
 	if len(got) != 2 || got["cs"].Name != "from-csharp" {
 		t.Fatalf("MultiGetAs = %+v", got)
+	}
+}
+
+// Encode and decode failures in the typed helpers are logged, so schema drift is visible instead of
+// looking like a permanent miss.
+func TestTypedHelpersLogCodecErrors(t *testing.T) {
+	client, _ := testutil.NewClient(t)
+	logger, logs := testutil.BufferLogger()
+	c := New(client, WithLogger(logger))
+	ctx := context.Background()
+
+	c.Set(ctx, "bad", []byte("not json"), 0)
+	if _, ok := GetAs[dto](ctx, c, "bad"); ok {
+		t.Fatal("GetAs should miss on an undecodable value")
+	}
+	if !strings.Contains(logs.String(), "decode failed for key: bad") {
+		t.Fatalf("decode error not logged; logs: %s", logs.String())
+	}
+	if SetAs(ctx, c, "fn", func() {}, 0) {
+		t.Fatal("SetAs should fail to encode a func")
+	}
+	if !strings.Contains(logs.String(), "encode failed for key: fn") {
+		t.Fatalf("encode error not logged; logs: %s", logs.String())
 	}
 }
 

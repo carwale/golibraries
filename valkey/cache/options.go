@@ -28,7 +28,8 @@ func WithTranscoder(t transcoder.ITranscoder) Option {
 	}
 }
 
-// WithRequestTimeout bounds each command when the caller's context has no deadline. Default 250ms.
+// WithRequestTimeout bounds each command, also when the caller's deadline is later, so a hung Valkey
+// degrades to a miss within d instead of holding the request. Default 250ms.
 func WithRequestTimeout(d time.Duration) Option {
 	return func(c *valkeyCache) {
 		if d > 0 {
