@@ -180,6 +180,12 @@ func (g *loadGroups) loadTimeout() time.Duration {
 // loadShared runs load (and the write-back) once per key, type and store mode across concurrent
 // callers in this process. Each caller waits only as long as its own ctx allows.
 func loadShared[T any](ctx context.Context, c ICache, key string, ttl time.Duration, load Loader[T], mode storeMode) (T, error) {
+	// A caller that has already given up must not start a detached load: nobody would read it, and
+	// in MultiGetOrLoad every remaining job would start one at once, past the concurrency cap.
+	if err := ctx.Err(); err != nil {
+		var zero T
+		return zero, err
+	}
 	d, ok := c.(loadDeduper)
 	if !ok {
 		return loadAndStore(ctx, c, key, ttl, load, mode)

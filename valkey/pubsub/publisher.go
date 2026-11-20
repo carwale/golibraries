@@ -15,8 +15,9 @@ type publishOptions struct {
 	classic bool
 }
 
-// WithClassicPublish forces PUBLISH even when the client is configured for sharded pub/sub. Use it
-// for channels observed with PSubscribe: pattern subscribers never see SPUBLISH messages.
+// WithClassicPublish forces PUBLISH even when the client is configured for sharded pub/sub. Use it,
+// whenever the publisher is sharded (cluster or standalone), for channels observed with
+// PSubscribe: pattern subscribers never see SPUBLISH messages.
 func WithClassicPublish() PublishOption {
 	return func(o *publishOptions) { o.classic = true }
 }

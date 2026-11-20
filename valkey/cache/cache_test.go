@@ -339,6 +339,90 @@ func TestMultiGetOrLoad(t *testing.T) {
 	}
 }
 
+// An undecodable cached value with no TTL must be overwritten by the load (storeAlways). With SET NX
+// the write would fail forever and every call would hit the loader.
+func TestGetOrLoadReplacesUndecodableValue(t *testing.T) {
+	cache, mr := newTestCache(t)
+	ctx := context.Background()
+	cache.Set(ctx, "k", []byte("not json"), 0)
+
+	var calls int32
+	load := func(context.Context) (dto, error) {
+		atomic.AddInt32(&calls, 1)
+		return dto{ID: 7}, nil
+	}
+	for i := 0; i < 3; i++ {
+		v, err := GetOrLoad(ctx, cache, "k", time.Minute, load)
+		if err != nil || v.ID != 7 {
+			t.Fatalf("GetOrLoad #%d = %+v, %v", i, v, err)
+		}
+	}
+	if n := atomic.LoadInt32(&calls); n != 1 {
+		t.Fatalf("loader ran %d times, want 1", n)
+	}
+	if got, _ := mr.Get("k"); got == "not json" {
+		t.Fatal("undecodable value was not overwritten")
+	}
+	if mr.TTL("k") != time.Minute {
+		t.Fatalf("replacement TTL = %v, want 1m", mr.TTL("k"))
+	}
+}
+
+func TestMultiGetOrLoadReplacesUndecodableValue(t *testing.T) {
+	cache, mr := newTestCache(t)
+	ctx := context.Background()
+	cache.Set(ctx, "k", []byte("not json"), 0)
+
+	var calls int32
+	cbs := map[string]Callback[dto]{"k": {
+		Load: func(context.Context) (dto, error) {
+			atomic.AddInt32(&calls, 1)
+			return dto{ID: 8}, nil
+		},
+		TTL: time.Minute,
+	}}
+	for i := 0; i < 3; i++ {
+		got, err := MultiGetOrLoad(ctx, cache, cbs)
+		if err != nil || got["k"].ID != 8 {
+			t.Fatalf("MultiGetOrLoad #%d = %+v, %v", i, got, err)
+		}
+	}
+	if n := atomic.LoadInt32(&calls); n != 1 {
+		t.Fatalf("loader ran %d times, want 1", n)
+	}
+	if got, _ := mr.Get("k"); got == "not json" {
+		t.Fatal("undecodable value was not overwritten")
+	}
+}
+
+// A caller whose ctx has already ended must not start (detached) loads: in MultiGetOrLoad that would
+// run every remaining loader at once, past the concurrency cap.
+func TestLoadsAreSkippedWhenCtxIsDone(t *testing.T) {
+	cache, _ := newTestCache(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	var calls int32
+	load := func(context.Context) (dto, error) {
+		atomic.AddInt32(&calls, 1)
+		return dto{ID: 1}, nil
+	}
+	if _, err := GetOrLoad(ctx, cache, "k", time.Minute, load); !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetOrLoad err = %v, want context.Canceled", err)
+	}
+	cbs := make(map[string]Callback[dto], 20)
+	for i := 0; i < 20; i++ {
+		cbs["k"+string(rune('a'+i))] = Callback[dto]{Load: load}
+	}
+	if _, err := MultiGetOrLoad(ctx, cache, cbs, WithMaxConcurrentLoads(2)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("MultiGetOrLoad err = %v, want context.Canceled", err)
+	}
+	time.Sleep(50 * time.Millisecond) // a detached loader would run after the callers returned
+	if n := atomic.LoadInt32(&calls); n != 0 {
+		t.Fatalf("loader ran %d times with a done ctx, want 0", n)
+	}
+}
+
 func TestNoOpCache(t *testing.T) {
 	n := NewNoOp(testutil.DiscardLogger(), nil)
 	ctx := context.Background()

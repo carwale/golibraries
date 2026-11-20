@@ -3,6 +3,7 @@ package pubsub
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/alicebob/miniredis/v2"
 	"strings"
 	"sync/atomic"
@@ -88,6 +89,48 @@ func TestHandlerPanicIsRecovered(t *testing.T) {
 	}
 }
 
+// A panicking lifecycle callback must not kill the process; later callbacks and messages still run.
+func TestCallbackPanicIsRecovered(t *testing.T) {
+	client, mr := testutil.NewClient(t)
+	opt := testutil.Option(mr.Addr())
+	opt.DisableRetry = true
+	logger, logs := testutil.BufferLogger()
+	sub := NewSubscriber(testutil.Connect(t, opt), WithSubscriberLogger(logger))
+	t.Cleanup(sub.Close)
+	pub := NewPublisher(client)
+	ctx := context.Background()
+
+	got := make(chan Message, 10)
+	subscribed := make(chan string, 2)
+	if _, err := sub.Subscribe(ctx, []string{"a", "b"}, func(m Message) { got <- m },
+		OnSubscribed(func(ch string) {
+			subscribed <- ch
+			if ch == "a" {
+				panic("bad callback")
+			}
+		})); err != nil {
+		t.Fatalf("Subscribe: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		select {
+		case <-subscribed:
+		case <-time.After(2 * time.Second):
+			t.Fatal("OnSubscribed did not run for both channels")
+		}
+	}
+	if _, err := pub.Publish(ctx, "a", []byte("ok")); err != nil {
+		t.Fatal(err)
+	}
+	expectMessage(t, got)
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.Contains(logs.String(), "lifecycle callback panicked") {
+		if time.Now().After(deadline) {
+			t.Fatalf("callback panic not logged; logs: %s", logs.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
 func TestBlankChannelsAreRejected(t *testing.T) {
 	pub, sub, _ := newTestPubSub(t)
 	ctx := context.Background()
@@ -142,22 +185,20 @@ func TestShardedCommandSelection(t *testing.T) {
 	}
 
 	s := NewSubscriber(client, WithShardedSubscribe(true)).(*subscriber)
-	loops := s.channelLoops([]string{"a", "b"}, subscribeOptions{})
-	if len(loops) != 2 {
-		t.Fatalf("sharded loops = %d, want one per channel", len(loops))
+	kind := s.channelKind(subscribeOptions{})
+	if got := cmd(newFeed(s, refKey{kind, "a"}).build(client.B())); got != "SSUBSCRIBE" {
+		t.Fatalf("sharded subscribe = %s", got)
 	}
-	for _, l := range loops {
-		if got := cmd(l.build(client.B())); got != "SSUBSCRIBE" {
-			t.Fatalf("sharded subscribe = %s", got)
-		}
-		if got := cmd(buildUnsubscribe(client.B(), l.kind, l.names)); got != "SUNSUBSCRIBE" {
-			t.Fatalf("sharded unsubscribe = %s", got)
-		}
+	if got := cmd(buildUnsubscribe(client.B(), kind, []string{"a"})); got != "SUNSUBSCRIBE" {
+		t.Fatalf("sharded unsubscribe = %s", got)
 	}
 	off := false
-	loops = s.channelLoops([]string{"a", "b"}, subscribeOptions{sharded: &off})
-	if len(loops) != 1 || cmd(loops[0].build(client.B())) != "SUBSCRIBE" {
-		t.Fatalf("WithSharded(false) should give one SUBSCRIBE loop, got %d", len(loops))
+	kind = s.channelKind(subscribeOptions{sharded: &off})
+	if got := cmd(newFeed(s, refKey{kind, "a"}).build(client.B())); got != "SUBSCRIBE" {
+		t.Fatalf("WithSharded(false) subscribe = %s", got)
+	}
+	if got := cmd(newFeed(s, refKey{"psubscribe", "p:*"}).build(client.B())); got != "PSUBSCRIBE" {
+		t.Fatalf("pattern subscribe = %s", got)
 	}
 	if got := cmd(buildUnsubscribe(client.B(), "psubscribe", []string{"p:*"})); got != "PUNSUBSCRIBE" {
 		t.Fatalf("pattern unsubscribe = %s", got)
@@ -224,5 +265,121 @@ func TestOnDisconnectedOncePerOutage(t *testing.T) {
 	}
 	if n := disconnects.Load(); n != 1 {
 		t.Fatalf("OnDisconnected called %d times for one outage, want 1", n)
+	}
+}
+
+// Subscriptions sharing channels with a long-lived one, opened and closed concurrently while
+// messages flow, must neither stall the connection nor cost the long-lived one a message. Each
+// valkey-go Receive registers a 16-message buffer it does not read until its SUBSCRIBE is
+// confirmed; when two Receives covered one channel on the shared connection, messages for that
+// channel could fill the buffer first, block the connection's reader and deadlock every
+// subscription. Now one feed per channel serves every subscription to it.
+func TestChurnOnSharedChannelsDoesNotStall(t *testing.T) {
+	pub, sub, _ := newTestPubSub(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	var steady atomic.Int64
+	if _, err := sub.Subscribe(ctx, []string{"churn:a"}, func(Message) { steady.Add(1) }); err != nil {
+		t.Fatal(err)
+	}
+	stop := make(chan struct{})
+	var publishedA atomic.Int64
+	pubDone := make(chan error, 1)
+	go func() {
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				pubDone <- nil
+				return
+			default:
+			}
+			ch := "churn:b"
+			if i%2 == 0 {
+				ch = "churn:a"
+			}
+			if _, err := pub.Publish(ctx, ch, []byte("x")); err != nil {
+				pubDone <- err
+				return
+			}
+			if ch == "churn:a" {
+				publishedA.Add(1)
+			}
+		}
+	}()
+
+	sets := [][]string{{"churn:a"}, {"churn:b"}, {"churn:a", "churn:b"}}
+	const churners, rounds = 10, 30
+	errs := make(chan error, churners)
+	for w := 0; w < churners; w++ {
+		go func(w int) {
+			for i := 0; i < rounds; i++ {
+				s, err := sub.Subscribe(ctx, sets[(w+i)%len(sets)], func(Message) {})
+				if err != nil {
+					errs <- fmt.Errorf("churner %d, Subscribe #%d: %w", w, i, err)
+					return
+				}
+				s.Close()
+			}
+			errs <- nil
+		}(w)
+	}
+	for w := 0; w < churners; w++ {
+		select {
+		case err := <-errs:
+			if err != nil {
+				t.Fatal(err)
+			}
+		case <-time.After(15 * time.Second):
+			t.Fatal("subscribe/close on shared channels stalled the connection")
+		}
+	}
+	close(stop)
+	if err := <-pubDone; err != nil {
+		t.Fatalf("Publish stalled: %v", err)
+	}
+	want := publishedA.Load()
+	deadline := time.Now().Add(5 * time.Second)
+	for steady.Load() < want && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if n := steady.Load(); n != want {
+		t.Fatalf("long-lived subscription got %d of %d messages", n, want)
+	}
+}
+
+// Each channel has its own receive loop, but a connection drop is still one outage per
+// subscription: one OnDisconnected, then one OnResubscribed per channel.
+func TestMultiChannelSubscriptionReportsOneOutage(t *testing.T) {
+	_, sub, mr := newTestPubSub(t)
+
+	var disconnects atomic.Int32
+	resubscribed := make(chan string, 10)
+	if _, err := sub.Subscribe(context.Background(), []string{"a", "b", "c"}, func(Message) {},
+		OnDisconnected(func(error) { disconnects.Add(1) }),
+		OnResubscribed(func(ch string) { resubscribed <- ch }),
+		WithBackoff(10*time.Millisecond, 20*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+
+	mr.Close()
+	time.Sleep(200 * time.Millisecond)
+	if err := mr.Restart(); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for len(seen) < 3 {
+		select {
+		case ch := <-resubscribed:
+			if seen[ch] {
+				t.Fatalf("OnResubscribed(%q) twice for one outage", ch)
+			}
+			seen[ch] = true
+		case <-time.After(5 * time.Second):
+			t.Fatalf("OnResubscribed for %v only", seen)
+		}
+	}
+	if n := disconnects.Load(); n != 1 {
+		t.Fatalf("OnDisconnected called %d times for one outage of a 3-channel subscription, want 1", n)
 	}
 }

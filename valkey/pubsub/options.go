@@ -23,9 +23,12 @@ func OnSubscribed(fn func(channel string)) SubscribeOption {
 	return func(o *subscribeOptions) { o.onSubscribed = fn }
 }
 
-// OnDisconnected is called once each time an established subscription drops (not for attempts that
-// fail while it is starting or reconnecting). Messages published until the subscription is
-// confirmed again are lost: pub/sub cannot replay them.
+// OnDisconnected is called once per outage of an established subscription: when the first of its
+// confirmed channels (or patterns) drops, and not again until every one has been confirmed again.
+// A node failure that drops several channels of the subscription is reported once; OnResubscribed
+// then fires per channel as each comes back. Attempts that fail while starting or reconnecting are
+// not new outages. Messages published until a channel is confirmed again are lost: pub/sub cannot
+// replay them.
 func OnDisconnected(fn func(err error)) SubscribeOption {
 	return func(o *subscribeOptions) { o.onDisconnected = fn }
 }

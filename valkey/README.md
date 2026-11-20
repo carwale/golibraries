@@ -45,8 +45,9 @@ import (
     "github.com/carwale/golibraries/valkey/cache"
 )
 
+var c cache.ICache
 client, err := valkey.NewClient(valkey.Config{
-    Host:        "master.my-cache.aps1.cache.amazonaws.com",
+    Host:          "master.my-cache.aps1.cache.amazonaws.com",
     IsCluster:     valkey.Bool(false), // required: true for ElastiCache cluster mode
     ShardedPubSub: valkey.Bool(false), // required: must match every other service on your channels
     Username:      "my-iam-user",      // IAM user attached to the cache
@@ -54,10 +55,12 @@ client, err := valkey.NewClient(valkey.Config{
     Region:        "ap-south-1",
 }, valkey.WithLogger(logger))
 if err != nil {
-    // Keep running without a cache, as the C# library does:
-    c := cache.NewNoOp(logger, nil)
+    // Keep running without a cache, as the C# library does. client is nil here: don't use or close it.
+    c = cache.NewNoOp(logger, nil)
+} else {
+    defer client.Close()
+    c = client.Cache()
 }
-defer client.Close()
 ```
 
 | Config field | Default | Notes |
@@ -74,7 +77,29 @@ defer client.Close()
 | `ShardedPubSub` | — | Required, no default. `SPUBLISH`/`SSUBSCRIBE` instead of `PUBLISH`/`SUBSCRIBE` (Valkey 7+). The two are separate namespaces: every publisher and subscriber of a channel must agree, and C# services (StackExchange.Redis) publish classic by default. |
 
 IAM credentials come from the AWS default chain (IRSA, ECS/EC2 role, environment). Pass `valkey.WithAWSCredentials`
-or `valkey.WithAWSConfig` to override. The service role needs `elasticache:Connect` on the cache and user.
+or `valkey.WithAWSConfig` to override. The role needs `elasticache:Connect` on **both** the cache and the user:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "elasticache:Connect",
+  "Resource": [
+    "arn:aws:elasticache:<region>:<account>:replicationgroup:<cluster-name>",
+    "arn:aws:elasticache:<region>:<account>:user:<username>"
+  ]
+}
+```
+
+Use `serverlesscache:<name>` instead of `replicationgroup:<name>` for ElastiCache Serverless. The ElastiCache user must
+be in a user group attached to the cache, and its access string must allow what the service uses: `+@read +@write`
+for the cache and store, plus `+@scripting` for `RunScript*` and `+@pubsub` (with `&*` or the channel names) for
+pub/sub.
+
+| Error | Usual cause |
+|---|---|
+| `WRONGPASS invalid username-password pair or user is disabled` from `NewClient` | The role's policy does not allow `elasticache:Connect` on the user ARN (or the cache ARN), `Username` is not the ElastiCache user ID, the user is not in a group attached to the cache, or `ClusterName`/`Region` are wrong. |
+| `NoCredentials` / `retrieving AWS credentials` | No credentials in the default chain; locally, sign in first (for example `aws sso login`) and set `AWS_PROFILE`. |
+| `NOPERM` on `RunScript*`, `Publish` or `Subscribe` | The user's access string lacks `+@scripting` or `+@pubsub`. `Subscribe` fails at once instead of retrying. |
 
 Local Valkey:
 
@@ -141,6 +166,11 @@ Behaviour notes:
   `ExpireWithCriticalRead`, not a hard delete.
 - Every cache command is bounded by `RequestTimeout`, even when the caller's deadline is longer, so a hung Valkey
   costs a request at most that long before it degrades to a miss.
+- A timeout only stops the caller waiting: the command still runs and its reply still crosses the network. Commands
+  share pipelined connections, so when replies outgrow the network (large values, big `MultiGet` batches, a slow
+  link) every command on the connection queues behind them, and callers that keep retrying after timeouts make the
+  queue longer. Keep values and `MultiGet` batches small enough for `RequestTimeout`; a 50-key batch of 1 KB values
+  is about 50 KB per call.
 - Values that fail to decode (or encode, in `SetAs`) are logged and treated as a miss (or `false`).
 - Concurrent `GetOrLoad` calls for the same key and type in one process share a single load, also while Valkey is
   down. The load is detached from any one caller's cancellation and bounded by `LoadTimeout` or the first caller's
@@ -226,23 +256,29 @@ Things to know:
 
 - Pub/sub is at-most-once. While the subscription connection is down, messages are lost; `OnDisconnected` and
   `OnResubscribed` tell you when to catch up from the source of truth.
-- The handler runs on the subscription's receive goroutine, in publish order. It must not block: valkey-go buffers
-  only a few messages per receiver before the shared connection stalls. A handler panic is recovered and logged, and
-  that message is dropped. Lifecycle callbacks run
-  one at a time on a separate goroutine, from an unbounded queue, so a slow `OnResubscribed` (a paced resync) never
-  stalls message delivery or the connection.
+- The handler runs on the channel's receive goroutine, one message after another with the handlers of other
+  subscriptions to the same channel. Every channel (or pattern) has its own goroutine, so a subscription to several
+  channels calls its handler concurrently: the handler must be safe for concurrent use, and publish order holds only
+  within one channel. It must not block: valkey-go buffers only a few messages per channel before the shared
+  connection stalls. A handler panic is recovered and logged, and that message is dropped.
+- Lifecycle callbacks run one at a time on a separate goroutine, from an unbounded queue, so a slow `OnResubscribed`
+  (a paced resync) never stalls message delivery or the connection. A callback panic is recovered and logged.
+  `OnDisconnected` fires once per outage, even when a node failure drops several channels of the subscription;
+  `OnResubscribed` then fires per channel as each comes back.
 - Don't call `Close` from a handler or callback (it would wait for itself); use `go s.Close()`.
-- In sharded mode each channel gets its own receive loop and `SSUBSCRIBE` round trip. Keep the channel count per
-  subscription small (one per pod, not one per user).
+- Each channel (or pattern) gets its own receive goroutine and subscribe round trip on the subscriber, in classic
+  and sharded mode alike. Keep the channel count small (one per pod, not one per user).
 - `Subscribe` readiness is all or nothing: if any channel is not confirmed in time, the subscription is closed and an
   error returned, wrapping the last subscribe error (for example `NOPERM`) when there was one. Subscribe channels
   that can fail independently in separate calls.
 - Blank channels or patterns are rejected with `pubsub.ErrEmptyChannel`, by `Subscribe`, `PSubscribe` and `Publish`.
 - Valkey has no sharded pattern subscription. `PSubscribe` is always classic and does **not** see `SPUBLISH`
-  messages; in a cluster, publish channels you want to observe by pattern with `pubsub.WithClassicPublish()`.
-- Several subscriptions on one subscriber may share a channel; each gets every message. `ISubscription.Close` sends
-  `UNSUBSCRIBE`/`SUNSUBSCRIBE`/`PUNSUBSCRIBE` only for the names no other subscription still uses, waits for the loops
-  to stop and for a running callback to return; callbacks still queued are dropped.
+  messages. Whenever `ShardedPubSub` is true (cluster or standalone), publish the channels you want to observe by
+  pattern with `pubsub.WithClassicPublish()`.
+- Several subscriptions on one subscriber may share a channel: it is subscribed once on the connection and each
+  subscription gets every message. `ISubscription.Close` sends `UNSUBSCRIBE`/`SUNSUBSCRIBE`/`PUNSUBSCRIBE` only for
+  the names no other subscription still uses, and waits for a running handler and callback to return; callbacks
+  still queued are dropped.
   `ISubscriber.Close` closes every subscription and its connections; `Client.Close` does not close subscribers.
 
 ## Using the packages without `valkey.Client`
@@ -271,4 +307,13 @@ real Valkey 7+ (ideally a cluster) before relying on them:
 ```
 VALKEY_ADDR=localhost:6379 go test -tags integration ./valkey/...
 VALKEY_ADDR=localhost:7000 VALKEY_CLUSTER=true go test -tags integration ./valkey/...
+```
+
+Against ElastiCache with IAM auth (credentials from the default chain, for example `AWS_PROFILE`; the network must
+reach the cache, so run inside the VPC or over VPN). Latency measured from a laptop over VPN is dominated by the link,
+not by Valkey:
+
+```
+AWS_PROFILE=<profile> VALKEY_ADDR=<primary-endpoint>:6379 VALKEY_IAM_USER=<user> VALKEY_CLUSTER_NAME=<cluster-name> \
+  VALKEY_REGION=ap-south-1 go test -tags integration ./valkey/
 ```

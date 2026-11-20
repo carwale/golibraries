@@ -2,38 +2,16 @@ package pubsub
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	valkeygo "github.com/valkey-io/valkey-go"
 )
 
-type receiveLoop struct {
-	kind  string // "subscribe", "ssubscribe" or "psubscribe", as reported in confirmations
-	names []string
-
-	mu          sync.Mutex
-	resubscribe map[string]bool // names dropped and not yet confirmed again
-	confirmed   bool            // a confirmation arrived since the last drop
-}
-
-func (l *receiveLoop) build(b valkeygo.Builder) valkeygo.Completed {
-	switch l.kind {
-	case "ssubscribe":
-		return b.Ssubscribe().Channel(l.names...).Build()
-	case "psubscribe":
-		return b.Psubscribe().Pattern(l.names...).Build()
-	default:
-		return b.Subscribe().Channel(l.names...).Build()
-	}
-}
-
-// buildUnsubscribe builds the unsubscribe command matching a receive loop kind.
+// buildUnsubscribe builds the unsubscribe command matching a subscribe kind.
 func buildUnsubscribe(b valkeygo.Builder, kind string, names []string) valkeygo.Completed {
 	switch kind {
 	case "ssubscribe":
@@ -47,19 +25,24 @@ func buildUnsubscribe(b valkeygo.Builder, kind string, names []string) valkeygo.
 
 type subscription struct {
 	owner   *subscriber
+	kind    string // "subscribe", "ssubscribe" or "psubscribe"
 	names   []string
 	handler Handler
 	opts    subscribeOptions
 
+	// ctx is cancelled by Close; emit drops callbacks after that.
 	ctx       context.Context
 	cancel    context.CancelFunc
-	closing   atomic.Bool
-	receivers []*receiveLoop
-	loops     sync.WaitGroup
+	feeds     []*feed // set by the subscriber under refMu
 	dispatchW sync.WaitGroup
 	stop      chan struct{}
 	done      chan struct{}
 	once      sync.Once
+
+	// deliverMu lets Close wait for a handler call in progress; detached is set under its write
+	// lock, after which no handler call starts.
+	deliverMu sync.RWMutex
+	detached  bool
 
 	// events is an unbounded queue of lifecycle callbacks. emit runs on valkey-go's connection
 	// goroutine, which must never block, so it only appends and signals.
@@ -68,9 +51,12 @@ type subscription struct {
 	signal   chan struct{}
 
 	mu        sync.Mutex
-	confirmed map[string]bool
-	pending   int
+	confirmed map[string]bool // names confirmed at least once
+	pending   int             // names never confirmed yet
 	ready     chan struct{}
+	up        map[string]bool // names confirmed since their last drop
+	upCount   int
+	outage    bool  // OnDisconnected was reported and not every name is back yet
 	lastErr   error // latest receive error; Subscribe reports it when confirmation times out
 
 	// failed is closed when the server rejects the subscription before it was ever confirmed (for
@@ -81,10 +67,11 @@ type subscription struct {
 
 var _ ISubscription = (*subscription)(nil)
 
-func newSubscription(owner *subscriber, names []string, handler Handler, o subscribeOptions) *subscription {
+func newSubscription(owner *subscriber, kind string, names []string, handler Handler, o subscribeOptions) *subscription {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &subscription{
 		owner:     owner,
+		kind:      kind,
 		names:     names,
 		handler:   handler,
 		opts:      o,
@@ -96,6 +83,7 @@ func newSubscription(owner *subscriber, names []string, handler Handler, o subsc
 		confirmed: make(map[string]bool, len(names)),
 		pending:   len(names),
 		ready:     make(chan struct{}),
+		up:        make(map[string]bool, len(names)),
 		failed:    make(chan struct{}),
 	}
 }
@@ -104,35 +92,21 @@ func (s *subscription) Channels() []string { return append([]string(nil), s.name
 
 func (s *subscription) Done() <-chan struct{} { return s.done }
 
-// Close unsubscribes, waits for the receive loops to stop and for a running callback to return.
-// Callbacks still queued are dropped. Do not call Close from a handler or callback: it would wait
-// for itself. Use `go sub.Close()` there instead.
+// Close detaches from the shared feeds (unsubscribing the names no other subscription uses), waits
+// for a running handler and callback to return, and drops callbacks still queued. Do not call
+// Close from a handler or callback: it would wait for itself. Use `go sub.Close()` there instead.
 func (s *subscription) Close() {
 	s.once.Do(func() {
-		// Cancelling Receive only detaches the local handler; the server keeps the subscription
-		// until it is told otherwise, so unsubscribe explicitly first: only the names no other
-		// subscription on this connection still uses.
-		s.closing.Store(true)
-		s.owner.release(s.receivers)
 		s.cancel()
-		s.loops.Wait()
+		s.owner.release(s)
+		s.deliverMu.Lock()
+		s.detached = true
+		s.deliverMu.Unlock()
 		close(s.stop)
 		s.dispatchW.Wait()
 		s.owner.remove(s)
 		close(s.done)
 	})
-}
-
-// run starts the dispatcher and the receive loops. The subscriber calls it under its lock, before
-// the subscription can be seen by Close, so receivers and the WaitGroups are set before any Wait.
-func (s *subscription) run(loops []*receiveLoop) {
-	s.receivers = loops
-	s.dispatchW.Add(1)
-	go s.dispatch()
-	for _, l := range loops {
-		s.loops.Add(1)
-		go s.receive(l)
-	}
 }
 
 // dispatch runs lifecycle callbacks one at a time, in order, on its own goroutine, so a slow
@@ -162,9 +136,20 @@ func (s *subscription) dispatch() {
 				return
 			default:
 			}
-			fn()
+			s.runCallback(fn)
 		}
 	}
+}
+
+// runCallback runs one lifecycle callback. A panic is recovered and logged, so a bad callback
+// cannot kill the process while Valkey is flapping; the queue carries on with the next one.
+func (s *subscription) runCallback(fn func()) {
+	defer func() {
+		if p := recover(); p != nil {
+			s.owner.logger.LogError("valkey: pub/sub lifecycle callback panicked for "+strings.Join(s.names, ", "), fmt.Errorf("panic: %v", p))
+		}
+	}()
+	fn()
 }
 
 // emit queues a callback. It never blocks: it runs on valkey-go's connection goroutine (through the
@@ -182,66 +167,14 @@ func (s *subscription) emit(fn func()) {
 	}
 }
 
-func (s *subscription) receive(l *receiveLoop) {
-	defer s.loops.Done()
-	client := s.owner.client
-	attempt := 0
-	for {
-		hookCtx := valkeygo.WithOnSubscriptionHook(s.ctx, func(ps valkeygo.PubSubSubscription) {
-			if ps.Kind == l.kind {
-				s.confirm(l, ps.Channel)
-			}
-		})
-		err := client.Receive(hookCtx, l.build(client.B()), s.deliver)
-		if s.closing.Load() || s.ctx.Err() != nil || errors.Is(err, valkeygo.ErrClosing) {
-			return
-		}
-		if err == nil {
-			err = errUnsubscribed
-		}
-		s.mu.Lock()
-		s.lastErr = err
-		s.mu.Unlock()
-
-		if !s.isReady() && rejected(err) {
-			// The server refused the subscription itself (ACL, bad name): fail Subscribe now
-			// instead of retrying until it times out.
-			s.failedOnce.Do(func() { close(s.failed) })
-			return
-		}
-
-		l.mu.Lock()
-		wasUp := l.confirmed
-		if wasUp {
-			attempt = 0 // the last attempt worked for a while; restart the backoff
-		}
-		l.confirmed = false
-		l.resubscribe = make(map[string]bool, len(l.names))
-		for _, n := range l.names {
-			l.resubscribe[n] = true
-		}
-		l.mu.Unlock()
-
-		s.owner.logger.LogError("valkey: subscription to "+strings.Join(l.names, ", ")+" dropped, resubscribing", err)
-		// Report each outage once, when an established subscription drops; failed attempts while
-		// starting or reconnecting are not new disconnections.
-		if fn := s.opts.onDisconnected; fn != nil && wasUp {
-			dropErr := err
-			s.emit(func() { fn(dropErr) })
-		}
-
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-time.After(backoff(attempt, s.opts.minBackoff, s.opts.maxBackoff)):
-		}
-		attempt++
-	}
-}
-
 // deliver runs the handler for one message. A panic is recovered and logged, so a bad message
 // cannot kill the process; that message is dropped.
 func (s *subscription) deliver(m valkeygo.PubSubMessage) {
+	s.deliverMu.RLock()
+	defer s.deliverMu.RUnlock()
+	if s.detached {
+		return
+	}
 	defer func() {
 		if p := recover(); p != nil {
 			s.owner.logger.LogError("valkey: pub/sub handler panicked on channel "+m.Channel, fmt.Errorf("panic: %v", p))
@@ -283,8 +216,9 @@ func (s *subscription) lastError() error {
 	return s.lastErr
 }
 
-// confirm runs on the connection goroutine for every subscribe confirmation. It must not block.
-func (s *subscription) confirm(l *receiveLoop, name string) {
+// confirm records that the server confirmed name. It runs on the connection goroutine (or under the
+// feed lock when attaching to a confirmed name) and must not block.
+func (s *subscription) confirm(name string) {
 	s.mu.Lock()
 	first := !s.confirmed[name]
 	if first {
@@ -294,13 +228,15 @@ func (s *subscription) confirm(l *receiveLoop, name string) {
 			close(s.ready)
 		}
 	}
+	again := !first && !s.up[name]
+	if !s.up[name] {
+		s.up[name] = true
+		s.upCount++
+	}
+	if s.upCount == len(s.names) {
+		s.outage = false
+	}
 	s.mu.Unlock()
-
-	l.mu.Lock()
-	l.confirmed = true
-	again := l.resubscribe[name]
-	delete(l.resubscribe, name)
-	l.mu.Unlock()
 
 	if first && s.opts.onSubscribed != nil {
 		fn := s.opts.onSubscribed
@@ -309,6 +245,33 @@ func (s *subscription) confirm(l *receiveLoop, name string) {
 	if again && s.opts.onResubscribed != nil {
 		fn := s.opts.onResubscribed
 		s.emit(func() { fn(name) })
+	}
+}
+
+// dropped records a failed or ended receive for name. OnDisconnected is reported once per outage:
+// on the first confirmed name to drop, and not again until every name has been confirmed again.
+// Failed attempts while starting or reconnecting are not new disconnections.
+func (s *subscription) dropped(name string, err error) {
+	s.mu.Lock()
+	s.lastErr = err
+	report := false
+	if s.up[name] {
+		s.up[name] = false
+		s.upCount--
+		if !s.outage {
+			s.outage = true
+			report = true
+		}
+	}
+	s.mu.Unlock()
+
+	if !s.isReady() && rejected(err) {
+		// The server refused the subscription itself (ACL, bad name): fail Subscribe now instead of
+		// retrying until it times out.
+		s.failedOnce.Do(func() { close(s.failed) })
+	}
+	if fn := s.opts.onDisconnected; fn != nil && report {
+		s.emit(func() { fn(err) })
 	}
 }
 
