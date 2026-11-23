@@ -423,8 +423,9 @@ func TestOnDisconnectedOnceForEachOutage(t *testing.T) {
 }
 
 // A handler that never returns blocks its own Close and new subscriptions to its channel (until
-// their ctx ends), but not Subscribe or Close on other channels.
-func TestStuckHandlerBlocksOnlyItsOwnChannel(t *testing.T) {
+// their ctx ends), but closing it does not hold up Subscribe or Close on other channels. The channel
+// stays quiet here: once valkey-go's 16-message buffer for it fills, the whole connection stalls.
+func TestStuckHandlerDoesNotBlockOtherChannelsClose(t *testing.T) {
 	pub, sub, _ := newTestPubSub(t)
 	ctx := context.Background()
 
@@ -504,5 +505,79 @@ func TestStuckHandlerBlocksOnlyItsOwnChannel(t *testing.T) {
 	}
 	if m := expectMessage(t, again); string(m.Payload) != "y" {
 		t.Fatalf("message = %+v", m)
+	}
+}
+
+// Shutdown must not hang on a handler that never returns: subscriber Close waits up to its timeout,
+// logs the stuck channel and closes the connections anyway. A concurrent Close waits for the first.
+func TestSubscriberCloseGivesUpOnStuckHandler(t *testing.T) {
+	client, mr := testutil.NewClient(t)
+	pub := NewPublisher(client)
+	opt := testutil.Option(mr.Addr())
+	opt.DisableRetry = true
+	subClient, err := valkeygo.NewClient(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logger, logs := testutil.BufferLogger()
+	sub := NewSubscriber(subClient, WithSubscriberLogger(logger))
+	sub.(*subscriber).closeTimeout = 300 * time.Millisecond
+
+	entered := make(chan struct{}, 1)
+	unblock := make(chan struct{})
+	t.Cleanup(func() { close(unblock) })
+	ctx := context.Background()
+	if _, err := sub.Subscribe(ctx, []string{"stuck"}, func(Message) {
+		entered <- struct{}{}
+		<-unblock
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sub.Subscribe(ctx, []string{"fine"}, func(Message) {}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pub.Publish(ctx, "stuck", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler was not called")
+	}
+
+	start := time.Now()
+	first, second := make(chan time.Duration, 1), make(chan time.Duration, 1)
+	go func() {
+		sub.Close()
+		first <- time.Since(start)
+	}()
+	time.Sleep(50 * time.Millisecond)
+	go func() {
+		sub.Close()
+		second <- time.Since(start)
+	}()
+
+	var tookFirst, tookSecond time.Duration
+	for _, c := range []struct {
+		ch   chan time.Duration
+		took *time.Duration
+	}{{first, &tookFirst}, {second, &tookSecond}} {
+		select {
+		case *c.took = <-c.ch:
+		case <-time.After(3 * time.Second):
+			t.Fatal("subscriber Close hung on a stuck handler")
+		}
+	}
+	if tookFirst < 250*time.Millisecond {
+		t.Fatalf("Close returned after %v, before its 300ms timeout", tookFirst)
+	}
+	if tookSecond < 250*time.Millisecond {
+		t.Fatalf("a concurrent Close returned after %v, before the first had finished", tookSecond)
+	}
+	if out := logs.String(); !strings.Contains(out, "stuck") || strings.Contains(out, "fine") {
+		t.Fatalf("Close should name only the stuck channel, logged: %s", out)
+	}
+	if err := subClient.Do(ctx, subClient.B().Ping().Build()).Error(); !errors.Is(err, valkeygo.ErrClosing) {
+		t.Fatalf("PING after Close = %v, want the client closed", err)
 	}
 }

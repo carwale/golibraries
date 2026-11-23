@@ -20,6 +20,7 @@ const (
 	defaultConfirmTimeout = 10 * time.Second
 	unsubscribeTimeout    = time.Second
 	slowStopWarning       = 5 * time.Second
+	defaultCloseTimeout   = 10 * time.Second
 )
 
 var (
@@ -72,7 +73,9 @@ type ISubscriber interface {
 	// channels it should see with WithClassicPublish. Handler concurrency and ordering are as for
 	// Subscribe, per pattern.
 	PSubscribe(ctx context.Context, patterns []string, handler Handler, opts ...SubscribeOption) (ISubscription, error)
-	// Close closes every subscription and the subscriber's connections.
+	// Close closes every subscription and the subscriber's connections. It waits up to 10s for
+	// running handlers and callbacks to return; past that it logs the channels still waiting and
+	// closes the connections anyway. A concurrent Close returns once the first has finished.
 	Close()
 }
 
@@ -84,6 +87,9 @@ type subscriber struct {
 	mu     sync.Mutex
 	subs   map[*subscription]struct{}
 	closed bool
+	// closeDone is closed when Close has finished; a later Close waits for it.
+	closeDone    chan struct{}
+	closeTimeout time.Duration
 
 	// feeds holds the one receive loop per (kind, name) that every subscription to the name shares
 	// (see feed). A feed is stopped and its name unsubscribed when its last subscription detaches.
@@ -106,10 +112,12 @@ var _ ISubscriber = (*subscriber)(nil)
 // valkey.Client.NewSubscriber, which does this.
 func NewSubscriber(client valkeygo.Client, opts ...SubscriberOption) ISubscriber {
 	s := &subscriber{
-		client:   client,
-		subs:     map[*subscription]struct{}{},
-		feeds:    map[refKey]*feed{},
-		stopping: map[refKey]chan struct{}{},
+		client:       client,
+		subs:         map[*subscription]struct{}{},
+		closeDone:    make(chan struct{}),
+		closeTimeout: defaultCloseTimeout,
+		feeds:        map[refKey]*feed{},
+		stopping:     map[refKey]chan struct{}{},
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -291,7 +299,7 @@ func (s *subscriber) release(sub *subscription) {
 // stopFeed stops f, logging if a handler keeps it from stopping for long.
 func (s *subscriber) stopFeed(f *feed) {
 	slow := time.AfterFunc(slowStopWarning, func() {
-		s.logger.LogWarningf("valkey: closing the subscription to %s has waited %v for a handler to return; new subscriptions to it wait too", f.key.name, slowStopWarning)
+		s.logger.LogErrorWithoutErrorf("valkey: closing the subscription to %s has waited %v for a handler to return; new subscriptions to it wait too", f.key.name, slowStopWarning)
 	})
 	f.stop()
 	slow.Stop()
@@ -326,6 +334,7 @@ func (s *subscriber) Close() {
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()
+		<-s.closeDone
 		return
 	}
 	s.closed = true
@@ -334,9 +343,10 @@ func (s *subscriber) Close() {
 		subs = append(subs, sub)
 	}
 	s.mu.Unlock()
+	defer close(s.closeDone)
 
-	// In parallel: each Close waits for its own running handler, and one slow handler should not
-	// delay the others.
+	// In parallel: each Close waits for its own running handler and callback, and one slow one
+	// should not delay the others.
 	var wg sync.WaitGroup
 	for _, sub := range subs {
 		wg.Add(1)
@@ -345,6 +355,27 @@ func (s *subscriber) Close() {
 			sub.Close()
 		}(sub)
 	}
-	wg.Wait()
+	all := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(all)
+	}()
+	timer := time.NewTimer(s.closeTimeout)
+	defer timer.Stop()
+	select {
+	case <-all:
+	case <-timer.C:
+		// A handler or callback has not returned. Shutdown must not hang on it: close the
+		// connections anyway. Its subscription finishes closing once it returns.
+		var stuck []string
+		for _, sub := range subs {
+			select {
+			case <-sub.done:
+			default:
+				stuck = append(stuck, sub.names...)
+			}
+		}
+		s.logger.LogErrorWithoutErrorf("valkey: subscriber Close waited %v for a handler or callback on %s to return; closing the connections anyway", s.closeTimeout, strings.Join(stuck, ", "))
+	}
 	s.client.Close()
 }
