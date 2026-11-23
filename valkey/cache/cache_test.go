@@ -451,3 +451,66 @@ func newTestCache(t *testing.T) (ICache, *miniredis.Miniredis) {
 	client, mr := testutil.NewClient(t)
 	return New(client, WithLogger(testutil.DiscardLogger())), mr
 }
+
+// A hung Valkey (connection open, no reply) must cost a cache call at most the request timeout, even
+// when the caller's own deadline is much later: the cache never holds a request.
+func TestRequestTimeoutCapsALongerCallerDeadline(t *testing.T) {
+	mr := miniredis.RunT(t)
+	proxy := testutil.NewStallProxy(t, mr.Addr())
+	client := testutil.Connect(t, testutil.Option(proxy.Addr()))
+	c := New(client, WithLogger(testutil.DiscardLogger()), WithRequestTimeout(50*time.Millisecond))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if !c.Set(ctx, "k", []byte("v"), 0) {
+		t.Fatal("Set before the stall failed")
+	}
+	proxy.Stall()
+
+	start := time.Now()
+	r := c.GetWithStatus(ctx, "k")
+	took := time.Since(start)
+	if !errors.Is(r.Err, context.DeadlineExceeded) || r.IsKeyExist {
+		t.Fatalf("GetWithStatus on a hung server = %+v, want a miss with context.DeadlineExceeded", r)
+	}
+	if took > time.Second {
+		t.Fatalf("GetWithStatus took %v under a 10s caller deadline, want about 50ms", took)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("the caller's own context should still be live")
+	}
+}
+
+// A shared load runs until the later of the load timeout and the starting caller's deadline.
+func TestLoadTimeoutBoundsSharedLoad(t *testing.T) {
+	client, _ := testutil.NewClient(t)
+	c := New(client, WithLogger(testutil.DiscardLogger()), WithLoadTimeout(50*time.Millisecond))
+
+	hang := func(ctx context.Context) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+
+	// No caller deadline: the load timeout ends it.
+	start := time.Now()
+	_, err := GetOrLoad(context.Background(), c, "no-deadline", time.Minute, hang)
+	if took := time.Since(start); !errors.Is(err, context.DeadlineExceeded) || took > time.Second {
+		t.Fatalf("GetOrLoad without a caller deadline = %v after %v, want DeadlineExceeded after about 50ms", err, took)
+	}
+
+	// A later caller deadline wins over the shorter load timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+	defer cancel()
+	var loadDeadline time.Duration
+	start = time.Now()
+	if _, err := GetOrLoad(ctx, c, "long-deadline", time.Minute, func(lctx context.Context) (string, error) {
+		d, _ := lctx.Deadline()
+		loadDeadline = d.Sub(start)
+		return "db", nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if loadDeadline < 300*time.Millisecond {
+		t.Fatalf("load deadline = %v after the call, want the caller's 400ms, not the 50ms load timeout", loadDeadline)
+	}
+}

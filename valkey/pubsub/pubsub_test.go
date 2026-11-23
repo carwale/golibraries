@@ -2,6 +2,7 @@ package pubsub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -73,9 +74,14 @@ func TestSubscribeAndPublish(t *testing.T) {
 	if errs[0] != nil || errs[1] == nil || errs[2] != nil {
 		t.Fatalf("PublishMulti errs = %v", errs)
 	}
-	first, second := expectMessage(t, got), expectMessage(t, got)
-	if string(first.Payload) != "1" || string(second.Payload) != "2" {
-		t.Fatalf("PublishMulti order = %q, %q", first.Payload, second.Payload)
+	// Each channel has its own receive goroutine, so the two messages may arrive in either order.
+	received := map[string]string{}
+	for i := 0; i < 2; i++ {
+		m := expectMessage(t, got)
+		received[m.Channel] = string(m.Payload)
+	}
+	if received["ch:pod:a"] != "1" || received["ch:pod:b"] != "2" {
+		t.Fatalf("PublishMulti delivered %v", received)
 	}
 
 	time.Sleep(50 * time.Millisecond)
@@ -318,5 +324,22 @@ func TestSubscriberCloseRacesSubscribe(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatalf("iteration %d: Subscribe and Close did not both return", i)
 		}
+	}
+}
+
+// A publish without a caller deadline must give up after the publish timeout on a hung server.
+func TestPublishTimeoutAppliesWithoutCallerDeadline(t *testing.T) {
+	mr := miniredis.RunT(t)
+	proxy := testutil.NewStallProxy(t, mr.Addr())
+	pub := NewPublisher(testutil.Connect(t, testutil.Option(proxy.Addr())), WithPublishTimeout(50*time.Millisecond))
+	if _, err := pub.Publish(context.Background(), "ch", []byte("before")); err != nil {
+		t.Fatalf("Publish before the stall: %v", err)
+	}
+	proxy.Stall()
+
+	start := time.Now()
+	_, err := pub.Publish(context.Background(), "ch", []byte("x"))
+	if took := time.Since(start); !errors.Is(err, context.DeadlineExceeded) || took > time.Second {
+		t.Fatalf("Publish on a hung server = %v after %v, want DeadlineExceeded after about 50ms", err, took)
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/alicebob/miniredis/v2"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -381,5 +382,127 @@ func TestMultiChannelSubscriptionReportsOneOutage(t *testing.T) {
 	}
 	if n := disconnects.Load(); n != 1 {
 		t.Fatalf("OnDisconnected called %d times for one outage of a 3-channel subscription, want 1", n)
+	}
+}
+
+// Every outage is reported: after the subscription has fully recovered from one, the next drop is a
+// new OnDisconnected.
+func TestOnDisconnectedOnceForEachOutage(t *testing.T) {
+	_, sub, mr := newTestPubSub(t)
+
+	disconnected := make(chan error, 10)
+	resubscribed := make(chan string, 10)
+	if _, err := sub.Subscribe(context.Background(), []string{"ch"}, func(Message) {},
+		OnDisconnected(func(err error) { disconnected <- err }),
+		OnResubscribed(func(ch string) { resubscribed <- ch }),
+		WithBackoff(10*time.Millisecond, 20*time.Millisecond)); err != nil {
+		t.Fatal(err)
+	}
+
+	for outage := 1; outage <= 2; outage++ {
+		mr.Close()
+		time.Sleep(100 * time.Millisecond) // a few failed reconnect attempts
+		if err := mr.Restart(); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-disconnected:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("OnDisconnected was not called for outage %d", outage)
+		}
+		select {
+		case <-resubscribed:
+		case <-time.After(5 * time.Second):
+			t.Fatalf("OnResubscribed was not called after outage %d", outage)
+		}
+	}
+	time.Sleep(50 * time.Millisecond)
+	if n := len(disconnected); n != 0 {
+		t.Fatalf("%d extra OnDisconnected calls for two outages", n)
+	}
+}
+
+// A handler that never returns blocks its own Close and new subscriptions to its channel (until
+// their ctx ends), but not Subscribe or Close on other channels.
+func TestStuckHandlerBlocksOnlyItsOwnChannel(t *testing.T) {
+	pub, sub, _ := newTestPubSub(t)
+	ctx := context.Background()
+
+	entered := make(chan struct{}, 1)
+	unblock := make(chan struct{})
+	var unblockOnce sync.Once
+	release := func() { unblockOnce.Do(func() { close(unblock) }) }
+	t.Cleanup(release) // runs before the subscriber's Close, so a failure cannot hang the test
+	stuck, err := sub.Subscribe(ctx, []string{"stuck"}, func(Message) {
+		entered <- struct{}{}
+		<-unblock
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := sub.Subscribe(ctx, []string{"other"}, func(Message) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pub.Publish(ctx, "stuck", []byte("x")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler was not called")
+	}
+
+	closed := make(chan struct{})
+	go func() {
+		stuck.Close()
+		close(closed)
+	}()
+	time.Sleep(50 * time.Millisecond) // let Close reach the wait for the handler
+
+	done := make(chan error, 1)
+	go func() {
+		s, err := sub.Subscribe(ctx, []string{"fresh"}, func(Message) {})
+		if err == nil {
+			s.Close()
+			other.Close()
+		}
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Subscribe on another channel: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Subscribe and Close on other channels blocked behind a stuck handler")
+	}
+
+	short, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	if _, err := sub.Subscribe(short, []string{"stuck"}, func(Message) {}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Subscribe to the closing channel = %v, want context.DeadlineExceeded", err)
+	}
+	select {
+	case <-closed:
+		t.Fatal("Close returned while its handler was still running")
+	default:
+	}
+
+	release()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close did not return after the handler did")
+	}
+	again := make(chan Message, 1)
+	if _, err := sub.Subscribe(ctx, []string{"stuck"}, func(m Message) { again <- m }); err != nil {
+		t.Fatalf("Subscribe after Close: %v", err)
+	}
+	if _, err := pub.Publish(ctx, "stuck", []byte("y")); err != nil {
+		t.Fatal(err)
+	}
+	if m := expectMessage(t, again); string(m.Payload) != "y" {
+		t.Fatalf("message = %+v", m)
 	}
 }

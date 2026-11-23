@@ -471,6 +471,80 @@ func TestIntegrationClassicAndPatternPubSub(t *testing.T) {
 	expectNothing(t, classic, "classic message from SPUBLISH")
 }
 
+// Classic and pattern commands carry no slot, so a cluster client would send SUBSCRIBE and the later
+// UNSUBSCRIBE to arbitrary nodes. After closing, no node may still hold one of this test's
+// subscriptions (sub= and psub= on its own connections, found by client name).
+func TestIntegrationUnsubscribeReachesTheSubscribedNode(t *testing.T) {
+	name := fmt.Sprintf("e2e-unsub-%d", time.Now().UnixNano())
+	c := integrationClientNamed(t, name)
+	sub, err := c.NewSubscriber()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sub.Close()
+	ctx := ctxWithTimeout(t, 60*time.Second)
+	p := prefix(t, c)
+
+	// Several rounds: with random routing, a mismatch is near certain on a multi-node cluster.
+	for i := 0; i < 10; i++ {
+		classic, err := sub.Subscribe(ctx, []string{fmt.Sprintf("%s:unsub:%d", p, i)}, func(pubsub.Message) {}, pubsub.WithSharded(false))
+		skipIfNoPerm(t, err)
+		if err != nil {
+			t.Fatalf("Subscribe: %v", err)
+		}
+		pattern, err := sub.PSubscribe(ctx, []string{fmt.Sprintf("%s:unsub:%d:*", p, i)}, func(pubsub.Message) {})
+		if err != nil {
+			t.Fatalf("PSubscribe: %v", err)
+		}
+		classic.Close()
+		pattern.Close()
+	}
+
+	seen := 0
+	for _, addr := range nodeAddrs(t, c) {
+		node := nodeClient(t, c, addr)
+		// Every type: a connection whose last subscription ended may no longer count as PUBSUB.
+		list, err := node.Do(ctx, node.B().Arbitrary("CLIENT", "LIST").Build()).ToString()
+		skipIfNoPerm(t, err) // CLIENT LIST is an admin command; service users rarely have it
+		if err != nil {
+			t.Fatalf("CLIENT LIST on %s: %v", addr, err)
+		}
+		for _, counts := range subCountsNamed(list, name) {
+			seen++
+			if counts != "sub=0 psub=0" {
+				t.Errorf("%s still holds subscriptions after Close: %s", addr, counts)
+			}
+		}
+	}
+	if seen == 0 {
+		t.Fatal("found none of this test's connections; the check did not run")
+	}
+	t.Logf("checked %d of this test's connections", seen)
+}
+
+// subCountsNamed returns "sub=N psub=M" for each CLIENT LIST entry whose name is exactly name.
+func subCountsNamed(list, name string) []string {
+	var out []string
+	for _, line := range strings.Split(strings.TrimPrefix(list, "txt:"), "\n") {
+		var sub, psub string
+		match := false
+		for _, f := range strings.Fields(line) {
+			switch {
+			case f == "name="+name:
+				match = true
+			case strings.HasPrefix(f, "sub="):
+				sub = f
+			case strings.HasPrefix(f, "psub="):
+				psub = f
+			}
+		}
+		if match {
+			out = append(out, sub+" "+psub)
+		}
+	}
+	return out
+}
+
 // A user without @pubsub (common for ElastiCache service users) must get NOPERM from Subscribe at
 // once, not after the confirmation timeout, and no OnDisconnected for a subscription that never ran.
 func TestIntegrationSubscribeRejectionFailsFast(t *testing.T) {

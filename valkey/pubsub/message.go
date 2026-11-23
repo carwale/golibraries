@@ -16,8 +16,10 @@ type Message struct {
 	Payload []byte
 }
 
-// Handler processes a received message. It runs on the connection's read goroutine, in publish
-// order, and must not block: hand slow work to another goroutine.
+// Handler processes a received message. Each channel (or pattern) has its own receive goroutine, so
+// the handler of a subscription to several channels is called concurrently and must be safe for
+// concurrent use; messages arrive in publish order only within one channel. It must not block:
+// hand slow work to another goroutine.
 type Handler func(Message)
 
 // OutboundMessage is one message for PublishMulti.

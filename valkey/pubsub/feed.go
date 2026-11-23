@@ -28,6 +28,10 @@ type feed struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
+	// released is closed once the feed is stopped and its name unsubscribed (see subscriber.release).
+	released chan struct{}
+	// node is the client the latest Receive ran on. Written by run only; read after done is closed.
+	node valkeygo.Client
 
 	// subs is read for every message without a lock; writes copy it under mu.
 	subs atomic.Pointer[[]*subscription]
@@ -39,7 +43,7 @@ type feed struct {
 
 func newFeed(owner *subscriber, key refKey) *feed {
 	ctx, cancel := context.WithCancel(context.Background())
-	f := &feed{owner: owner, key: key, ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	f := &feed{owner: owner, key: key, ctx: ctx, cancel: cancel, done: make(chan struct{}), released: make(chan struct{})}
 	f.subs.Store(&[]*subscription{})
 	return f
 }
@@ -137,9 +141,11 @@ func (f *feed) backoffRange() (min, max time.Duration) {
 // run subscribes and resubscribes after every drop until stop.
 func (f *feed) run() {
 	defer close(f.done)
-	client := f.owner.client
 	attempt := 0
 	for {
+		// Picked again on every attempt: after a drop the node may be gone.
+		client := f.owner.receiver(f.key.kind)
+		f.node = client
 		hookCtx := valkeygo.WithOnSubscriptionHook(f.ctx, func(ps valkeygo.PubSubSubscription) {
 			if ps.Kind == f.key.kind && ps.Channel == f.key.name {
 				f.confirmed()

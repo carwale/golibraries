@@ -93,8 +93,10 @@ func (s *subscription) Channels() []string { return append([]string(nil), s.name
 func (s *subscription) Done() <-chan struct{} { return s.done }
 
 // Close detaches from the shared feeds (unsubscribing the names no other subscription uses), waits
-// for a running handler and callback to return, and drops callbacks still queued. Do not call
-// Close from a handler or callback: it would wait for itself. Use `go sub.Close()` there instead.
+// for a running handler and callback to return, and drops callbacks still queued. A handler that
+// never returns blocks this Close and new subscriptions to its channels, but no other subscription.
+// Do not call Close from a handler or callback: it would wait for itself. Use `go sub.Close()`
+// there instead.
 func (s *subscription) Close() {
 	s.once.Do(func() {
 		s.cancel()
